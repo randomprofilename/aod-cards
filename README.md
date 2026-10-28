@@ -66,14 +66,11 @@ Use **JDK 17+** (verified locally with JDK 20), **Android SDK Platform 37**, and
 APK: `app/build/outputs/apk/debug/app-debug.apk`. On Windows, use `gradlew.bat`.
 
 <details>
-<summary>Release builds and checks</summary>
+<summary>Checks</summary>
 
 ```sh
-./gradlew assembleRelease
 ./gradlew assembleDebugAndroidTest lintDebug
 ```
-
-Release output: `app/build/outputs/apk/release/app-release-unsigned.apk`. Sign it with your own release key before distribution; keep credentials outside the repository.
 
 To run the regression suite on a connected API 36+ device:
 

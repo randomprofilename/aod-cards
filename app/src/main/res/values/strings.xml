@@ -129,7 +129,9 @@
     <string name="lockstar_preview_enable">On the Widget tab, turn on “Show notifications when the screen is on” so they appear in the LockStar preview.</string>
     <string name="lockstar_preview_disable">After adding the widget, you can turn off “Show notifications when the screen is on”.</string>
     <string name="about_version">Version %1$s</string>
-    <string name="about_github_placeholder">Link coming soon</string>
+    <string name="about_github_repository" translatable="false">randomprofilename/aod-cards</string>
+    <string name="about_github_url" translatable="false">https://github.com/randomprofilename/aod-cards</string>
+    <string name="about_github_unavailable">No app is available to open this link.</string>
     <string name="about_tested_device">Tested and optimized for Samsung Galaxy Z Fold8 with One UI 9.</string>
     <string name="ongoing_examples">For example, charging, navigation, or active services.</string>
 </resources>

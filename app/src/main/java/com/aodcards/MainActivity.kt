@@ -370,10 +370,21 @@ class MainActivity : Activity() {
         val github = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(13), dp(16), dp(13))
-            background = rounded(CONTROL, dp(18), null)
+            background = RippleDrawable(
+                ColorStateList.valueOf(Color.argb(38, 120, 185, 255)),
+                rounded(CONTROL, dp(18), null), null
+            )
+            isFocusable = true
+            setOnClickListener {
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(getString(R.string.about_github_url))))
+                } catch (_: android.content.ActivityNotFoundException) {
+                    Toast.makeText(this@MainActivity, R.string.about_github_unavailable, Toast.LENGTH_SHORT).show()
+                }
+            }
         }
         github.addView(text("GitHub", 15f, INK, true), wrap())
-        github.addView(text(getString(R.string.about_github_placeholder), 13f, MUTED).apply {
+        github.addView(text(getString(R.string.about_github_repository), 13f, BLUE).apply {
             setPadding(0, dp(4), 0, 0)
         }, wrap())
         content.addView(github, wrap())

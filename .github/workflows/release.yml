@@ -1,0 +1,127 @@
+name: Build and release APK
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    if: github.repository == 'randomprofilename/aod-cards' && github.actor == 'randomprofilename' && github.triggering_actor == 'randomprofilename'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
+        with:
+          packages: 'platform-tools platforms;android-37.0 build-tools;37.0.0'
+          log-accepted-android-sdk-licenses: false
+
+      - name: Check release version
+        if: github.ref_type == 'tag'
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          tag = os.environ['GITHUB_REF_NAME']
+          version = re.search(r"versionName\s+'([^']+)'", Path('app/build.gradle').read_text()).group(1)
+          if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag) or tag != version:
+              raise SystemExit(f'Tag {tag!r} must match versionName {version!r} and use vMAJOR.MINOR.PATCH.')
+          PY
+
+      - name: Build APK and compile regression suite
+        run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest lintDebug assembleRelease
+
+      - name: Upload unsigned APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: unsigned-apk
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    if: github.repository == 'randomprofilename/aod-cards' && github.actor == 'randomprofilename' && github.triggering_actor == 'randomprofilename' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
+        with:
+          packages: 'build-tools;37.0.0'
+          log-accepted-android-sdk-licenses: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: unsigned-apk
+          path: unsigned
+
+      - name: Sign and verify APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          : "${ANDROID_KEYSTORE_BASE64:?Set ANDROID_KEYSTORE_BASE64 in repository secrets}"
+          : "${ANDROID_KEYSTORE_PASSWORD:?Set ANDROID_KEYSTORE_PASSWORD in repository secrets}"
+          : "${ANDROID_KEY_ALIAS:?Set ANDROID_KEY_ALIAS in repository secrets}"
+          : "${ANDROID_KEY_PASSWORD:?Set ANDROID_KEY_PASSWORD in repository secrets}"
+          umask 077
+          keystore_file=$(mktemp "$RUNNER_TEMP/aod-signing.XXXXXX")
+          trap 'rm -f "$keystore_file"' EXIT
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore_file"
+          mkdir -p release
+          build_tools="$ANDROID_HOME/build-tools/37.0.0"
+          "$build_tools/zipalign" -P 16 -f 4 unsigned/app-release-unsigned.apk "$RUNNER_TEMP/aligned.apk"
+          "$build_tools/apksigner" sign \
+            --ks "$keystore_file" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --key-pass env:ANDROID_KEY_PASSWORD \
+            --v4-signing-enabled false \
+            --out "release/AOD-Cards-$GITHUB_REF_NAME.apk" \
+            "$RUNNER_TEMP/aligned.apk"
+          "$build_tools/apksigner" verify --verbose "release/AOD-Cards-$GITHUB_REF_NAME.apk"
+          cd release
+          sha256sum "AOD-Cards-$GITHUB_REF_NAME.apk" > SHA256SUMS
+
+      - name: Create draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "release/AOD-Cards-$GITHUB_REF_NAME.apk" release/SHA256SUMS \
+            --verify-tag --draft --generate-notes \
+            --title "AOD Cards $GITHUB_REF_NAME"
