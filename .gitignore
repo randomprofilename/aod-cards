@@ -1,0 +1,40 @@
+# Gradle / Kotlin caches and build output
+.gradle/
+.kotlin/
+build/
+.cxx/
+.externalNativeBuild/
+
+# Local SDK paths and signing credentials
+local.properties
+keystore.properties
+key.properties
+*.jks
+*.keystore
+.env
+.env.*
+!.env.example
+
+# Android packages and local source exports
+*.apk
+*.aab
+*.apks
+*.idsig
+*.zip
+
+# IDE and machine-specific files
+.idea/
+*.iml
+.vscode/
+.DS_Store
+._*
+*.hprof
+*.log
+
+# Keep the Gradle wrapper JAR in version control.
+!gradle/wrapper/gradle-wrapper.jar
+
+# Local assistant attachments and workspace metadata
+.codex-attachments/
+.codex/
+.agents/

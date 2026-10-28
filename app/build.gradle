@@ -1,0 +1,28 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.aodcards'
+    compileSdk 37
+    buildToolsVersion '37.0.0'
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    defaultConfig {
+        applicationId 'com.aodcards'
+        minSdk 36
+        targetSdk 37
+        versionCode 1
+        versionName 'v0.1.0'
+        testInstrumentationRunner 'com.aodcards.RegressionInstrumentation'
+    }
+    buildTypes {
+        release {
+            optimization {
+                enable = true
+            }
+        }
+    }
+}

@@ -1,0 +1,15 @@
+<resources>
+    <color name="ui_background">#000000</color>
+    <color name="ui_surface">#171719</color>
+    <color name="ui_control">#303034</color>
+    <color name="ui_border">#353538</color>
+    <color name="ui_accent">#3E91FF</color>
+    <color name="ui_text">#FAFAFC</color>
+    <color name="ui_muted">#A0A0A6</color>
+    <color name="ui_success">#6ED59B</color>
+    <color name="ui_warning">#E9B65C</color>
+    <color name="ui_warning_bar">#3A2E0D</color>
+    <color name="ui_warning_bar_text">#FFE08A</color>
+    <color name="ui_warning_bar_border">#6B5018</color>
+    <color name="ui_switch_off">#5C5C63</color>
+</resources>

@@ -1,0 +1,135 @@
+<resources>
+    <string name="open_lockstar">Open LockStar</string>
+    <string name="open_lockstar_from_goodlock">Open LockStar in Good Lock, then add the widget to Always On Display.</string>
+    <string name="lockstar_unavailable">Install Good Lock and LockStar to add the widget to Always On Display.</string>
+    <string name="show_on_screen_on">Show notifications when the screen is on</string>
+    <string name="show_on_screen_on_hint">Keep notification and music cards visible when the screen turns on.</string>
+    <string name="screen_visibility_description">Cards are shown on Always On Display. You can also enable them when the screen is on.</string>
+    <string name="demo_music_title" translatable="false">Midnight City</string>
+    <string name="demo_music_artist" translatable="false">M83</string>
+    <string name="app_name">AOD Cards</string>
+    <string name="notification_access_label">AOD Cards notification access</string>
+    <string name="widget_description">Notification and music cards for Always On Display</string>
+    <string name="content_full">Full text</string>
+    <string name="content_sender">Sender</string>
+    <string name="content_app">App</string>
+    <string name="content_modes_hint">Titles, attachments, and music are hidden in modes without text.</string>
+    <string name="privacy_settings_warning">These settings may differ from your system settings. Please be careful.</string>
+    <string name="compact_mode">Hide photos and attachments</string>
+    <string name="preview_title">Preview</string>
+    <string name="preview_personal">My notifications</string>
+    <string name="filter_title">Apps</string>
+    <string name="filter_hint">Select apps whose notifications you want to hide. Changes are saved immediately.</string>
+    <string name="filter_search">Search apps</string>
+    <string name="filter_clear">Clear search</string>
+    <string name="filter_loading">Loading apps…</string>
+    <string name="filter_empty">No results found</string>
+    <string name="filter_undo">Undo last change</string>
+    <string name="filter_all">All</string>
+    <string name="filter_active">Active</string>
+    <string name="filter_blocked">Blocked</string>
+    <string name="about_description">AOD Cards · notifications on Always On Display</string>
+    <string name="connected_updated">Connected · Updated at %1$s</string>
+    <string name="preview_widget_size">Widget %1$d · %2$d × %3$s</string>
+    <string name="auto_size">auto</string>
+    <string name="filter_accessibility">%1$s, %2$s</string>
+    <string name="filter_summary">Blocked: %1$d · Showing: %2$d</string>
+    <string name="notifications_hidden">notifications hidden</string>
+    <string name="notifications_allowed">notifications allowed</string>
+    <string name="music_paused">Paused</string>
+    <string name="music_playing">Now playing</string>
+    <string name="localized_001">Ongoing notifications</string>
+    <string name="localized_002">Active</string>
+    <string name="localized_003">Notifications on Always On Display</string>
+    <string name="localized_004">Refresh</string>
+    <string name="localized_005">Refresh widget notifications</string>
+    <string name="localized_006">Connection</string>
+    <string name="localized_007">Permissions and background activity</string>
+    <string name="localized_008">Cards appear when the screen is off and are hidden when it turns on.</string>
+    <string name="localized_009">Add to LockStar</string>
+    <string name="localized_010">Complete these steps once.</string>
+    <string name="localized_011">Widget</string>
+    <string name="localized_012">Access</string>
+    <string name="localized_013">Filter</string>
+    <string name="localized_014">Selected</string>
+    <string name="localized_015">Not selected</string>
+    <string name="localized_016">About</string>
+    <string name="localized_017">Access enabled</string>
+    <string name="localized_018">Permission required</string>
+    <string name="localized_019">Unrestricted</string>
+    <string name="localized_020">Battery optimization is enabled</string>
+    <string name="localized_021">Manage</string>
+    <string name="localized_022">Disable</string>
+    <string name="localized_023">Notification access unavailable · Tap to connect</string>
+    <string name="localized_024">Update failed · Open Access and try again</string>
+    <string name="localized_025">Connecting service…</string>
+    <string name="localized_026">Service connected</string>
+    <string name="localized_027">Update failed</string>
+    <string name="localized_028">Access granted · Connecting</string>
+    <string name="localized_029">Notification access</string>
+    <string name="localized_030">Required to receive notifications and show them in the widget.</string>
+    <string name="localized_031">Checking access…</string>
+    <string name="localized_032">Set up</string>
+    <string name="localized_033">Background activity</string>
+    <string name="localized_034">Excluding the app from battery optimization helps keep cards up to date.</string>
+    <string name="localized_035">Checking status…</string>
+    <string name="localized_036">Compact</string>
+    <string name="localized_037">Normal</string>
+    <string name="localized_038">Large</string>
+    <string name="localized_039">Size</string>
+    <string name="localized_040">Scale all elements.</string>
+    <string name="localized_041">Scale</string>
+    <string name="localized_042">Text lines</string>
+    <string name="localized_043">2 lines</string>
+    <string name="localized_044">3 lines</string>
+    <string name="localized_045">Content</string>
+    <string name="localized_046">What to show in cards.</string>
+    <string name="localized_047">AOD content</string>
+    <string name="localized_048">Use app icons instead of photos.</string>
+    <string name="localized_049">Music card</string>
+    <string name="localized_050">Show a separate card instead of the player notification.</string>
+    <string name="localized_051">Behavior</string>
+    <string name="localized_052">Priority and overflow.</string>
+    <string name="localized_053">Show</string>
+    <string name="localized_054">Hide</string>
+    <string name="localized_055">Group</string>
+    <string name="localized_056">Counter position</string>
+    <string name="localized_057">Left</string>
+    <string name="localized_058">Center</string>
+    <string name="localized_059">Right</string>
+    <string name="localized_060">Allow notification access above.</string>
+    <string name="localized_061">Add the AOD Cards widget to your home screen from the widget list.</string>
+    <string name="localized_062">In Good Lock, open LockStar → Always On Display and add a third-party widget.</string>
+    <string name="localized_063">Third-party widget availability depends on the LockStar and firmware versions.</string>
+    <string name="localized_064">Demo</string>
+    <string name="localized_065">Widget instance to preview</string>
+    <string name="localized_066">First enable notification access on the Access tab.</string>
+    <string name="localized_067">Refreshing notifications. The status appears above the preview.</string>
+    <string name="localized_068">Notification access unavailable\nOpen the Access tab to connect the service.</string>
+    <string name="localized_069">Unable to refresh notifications\nTap Refresh to try again.</string>
+    <string name="localized_070">Connecting to notifications…</string>
+    <string name="localized_071">No matching notifications\nCheck blocked apps and ongoing notification settings.</string>
+    <string name="localized_072">No active notifications\nSwitch to Demo to customize the appearance.</string>
+    <string name="localized_073" translatable="false">2 new messages</string>
+    <string name="localized_074" translatable="false">Telegram group summary</string>
+    <string name="localized_075" translatable="false">Messages</string>
+    <string name="localized_076" translatable="false">GitHub: new sign-in\nDevice: Chrome · Android\nIf this was not you, change your password</string>
+    <string name="localized_077" translatable="false">Weekly report</string>
+    <string name="localized_078" translatable="false">New metrics are ready.</string>
+    <string name="localized_079" translatable="false">Calendar</string>
+    <string name="localized_080" translatable="false">Team meeting</string>
+    <string name="localized_081" translatable="false">Starts in 10 minutes.</string>
+    <string name="localized_082" translatable="false">Music · Daft Punk — One More Time\nNavigation · route active\nWatch · connected</string>
+    <string name="localized_083">Blocked</string>
+    <string name="localized_084">Allowed</string>
+    <string name="localized_085">Current track artwork</string>
+    <string name="localized_086">Sender photo or app icon</string>
+    <string name="localized_087">App icon</string>
+    <string name="localized_088">Image preview</string>
+    <string name="lockstar_preview_enable">On the Widget tab, turn on “Show notifications when the screen is on” so they appear in the LockStar preview.</string>
+    <string name="lockstar_preview_disable">After adding the widget, you can turn off “Show notifications when the screen is on”.</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_github_placeholder">Link coming soon</string>
+    <string name="about_tested_device">Tested and optimized for Samsung Galaxy Z Fold8 with One UI 9.</string>
+    <string name="ongoing_examples">For example, charging, navigation, or active services.</string>
+</resources>

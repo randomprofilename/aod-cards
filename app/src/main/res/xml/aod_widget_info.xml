@@ -1,0 +1,8 @@
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="398dp" android:minHeight="289dp"
+    android:minResizeWidth="398dp" android:minResizeHeight="289dp"
+    android:initialLayout="@layout/widget_cards_grouped"
+    android:previewLayout="@layout/widget_picker_preview"
+    android:resizeMode="none" android:widgetCategory="keyguard|home_screen"
+    android:updatePeriodMillis="0" android:description="@string/widget_description"
+    android:previewImage="@drawable/widget_picker_fallback" />

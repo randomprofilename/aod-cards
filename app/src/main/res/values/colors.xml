@@ -1,0 +1,16 @@
+<resources>
+    <color name="ic_launcher_background">#030B24</color>
+    <color name="ui_background">#F2F2F5</color>
+    <color name="ui_surface">#FFFFFF</color>
+    <color name="ui_control">#E5E5EA</color>
+    <color name="ui_border">#D6D6DB</color>
+    <color name="ui_accent">#3875FF</color>
+    <color name="ui_text">#080809</color>
+    <color name="ui_muted">#737379</color>
+    <color name="ui_success">#23824F</color>
+    <color name="ui_warning">#9A6514</color>
+    <color name="ui_warning_bar">#FFF2C5</color>
+    <color name="ui_warning_bar_text">#6B4700</color>
+    <color name="ui_warning_bar_border">#E7C567</color>
+    <color name="ui_switch_off">#A7A7AE</color>
+</resources>

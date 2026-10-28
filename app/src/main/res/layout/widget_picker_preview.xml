@@ -1,0 +1,69 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_picker_content"
+    android:layout_width="398dp" android:layout_height="289dp"
+    android:orientation="vertical" android:padding="2dp"
+    android:background="@android:color/transparent">
+    <include layout="@layout/widget_picker_music" />
+    <LinearLayout android:id="@+id/picker_demo_row_0" android:layout_width="match_parent"
+        android:layout_height="52dp" android:layout_marginBottom="2dp" android:background="@drawable/card_surface"
+        android:gravity="center_vertical" android:orientation="horizontal" android:paddingStart="10dp" android:paddingEnd="10dp">
+        <TextView android:layout_width="42dp" android:layout_height="42dp" android:background="@drawable/avatar_circle"
+            android:gravity="center" android:text="T" android:textColor="#FFFAFAFC" android:textStyle="bold" android:textSize="18sp"
+            android:importantForAccessibility="no" />
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:layout_marginStart="9dp" android:orientation="vertical">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Telegram"
+                android:textColor="#FFFAFAFC" android:textSize="13sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/localized_073"
+                android:textColor="#FFFAFAFC" android:textSize="11sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/localized_074"
+                android:textColor="#FFE7E7EB" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" />
+        </LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:id="@+id/picker_demo_row_1" android:layout_width="match_parent"
+        android:layout_height="52dp" android:layout_marginBottom="2dp" android:background="@drawable/card_surface"
+        android:gravity="center_vertical" android:orientation="horizontal" android:paddingStart="10dp" android:paddingEnd="10dp">
+        <TextView android:layout_width="42dp" android:layout_height="42dp" android:background="@drawable/avatar_circle"
+            android:gravity="center" android:text="G" android:textColor="#FFFAFAFC" android:textStyle="bold" android:textSize="18sp"
+            android:importantForAccessibility="no" />
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:layout_marginStart="9dp" android:orientation="vertical">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="GitHub"
+                android:textColor="#FFFAFAFC" android:textSize="13sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/localized_076"
+                android:textColor="#FFE7E7EB" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" />
+        </LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:id="@+id/picker_demo_row_2" android:layout_width="match_parent"
+        android:layout_height="52dp" android:layout_marginBottom="2dp" android:background="@drawable/card_surface"
+        android:gravity="center_vertical" android:orientation="horizontal" android:paddingStart="10dp" android:paddingEnd="10dp">
+        <TextView android:layout_width="42dp" android:layout_height="42dp" android:background="@drawable/avatar_circle"
+            android:gravity="center" android:text="T" android:textColor="#FFFAFAFC" android:textStyle="bold" android:textSize="18sp"
+            android:importantForAccessibility="no" />
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:layout_marginStart="9dp" android:orientation="vertical">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Taylor"
+                android:textColor="#FFFAFAFC" android:textSize="13sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/localized_077"
+                android:textColor="#FFFAFAFC" android:textSize="11sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/localized_078"
+                android:textColor="#FFE7E7EB" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" />
+        </LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:id="@+id/picker_demo_row_3" android:layout_width="match_parent"
+        android:layout_height="52dp" android:layout_marginBottom="2dp" android:background="@drawable/card_surface"
+        android:gravity="center_vertical" android:orientation="horizontal" android:paddingStart="10dp" android:paddingEnd="10dp">
+        <TextView android:layout_width="42dp" android:layout_height="42dp" android:background="@drawable/avatar_circle"
+            android:gravity="center" android:text="C" android:textColor="#FFFAFAFC" android:textStyle="bold" android:textSize="18sp"
+            android:importantForAccessibility="no" />
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:layout_marginStart="9dp" android:orientation="vertical">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/localized_079"
+                android:textColor="#FFFAFAFC" android:textSize="13sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/localized_080"
+                android:textColor="#FFFAFAFC" android:textSize="11sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/localized_081"
+                android:textColor="#FFE7E7EB" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

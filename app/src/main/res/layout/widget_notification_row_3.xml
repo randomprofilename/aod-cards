@@ -1,0 +1,41 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/card_row_3"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/card_shell_3" android:visibility="gone" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="8dp" android:layout_marginStart="14dp" android:layout_marginEnd="14dp" android:minHeight="48dp" android:background="@drawable/card_surface" android:paddingStart="14dp" android:paddingEnd="14dp" android:paddingTop="8dp" android:paddingBottom="8dp" android:gravity="center_vertical" android:orientation="horizontal">
+ <FrameLayout android:id="@+id/avatar_container_3" android:layout_width="46dp" android:layout_height="46dp">
+  <ImageView android:id="@+id/avatar_main_3" android:layout_width="44dp" android:layout_height="44dp" android:layout_gravity="center" android:background="@drawable/avatar_circle" android:clipToOutline="true" android:scaleType="centerCrop" android:contentDescription="@string/localized_086" />
+  <FrameLayout android:id="@+id/app_icon_badge_frame_3" android:layout_width="22dp" android:layout_height="22dp" android:layout_gravity="bottom|end" android:visibility="gone">
+   <ImageView android:id="@+id/app_icon_badge_3" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/avatar_circle" android:clipToOutline="true" android:scaleType="centerCrop" android:contentDescription="@string/localized_087" />
+  </FrameLayout>
+ </FrameLayout>
+ <LinearLayout android:id="@+id/card_content_column_3" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="14dp" android:orientation="vertical">
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:id="@+id/card_header_3">
+   <TextView android:id="@+id/app_name_3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#FFFAFAFC" android:textStyle="bold" android:textSize="15sp" android:maxLines="1" android:ellipsize="end" /><TextView android:id="@+id/card_author_count_3" android:layout_width="18dp" android:layout_height="18dp" android:layout_marginStart="4dp" android:layout_marginEnd="2dp" android:background="@drawable/group_count_background" android:gravity="center" android:textColor="#FFF1F1F4" android:textSize="11sp" android:textStyle="bold" android:visibility="gone" />
+   <TextView android:id="@+id/card_time_3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="5dp" android:textColor="#FFABABB2" android:textSize="11sp" android:maxLines="1" />
+  </LinearLayout>
+  <TextView android:id="@+id/card_title_3" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="1dp" android:textColor="#FFFAFAFC" android:textSize="13sp" android:maxLines="1" android:ellipsize="end" />
+  <TextView android:id="@+id/card_text_3" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="0dp" android:textColor="#FFE7E7EB" android:textSize="13sp" android:maxLines="5" android:ellipsize="end" />
+  <ImageView android:id="@+id/card_image_3" android:layout_width="match_parent" android:layout_height="64dp" android:layout_marginTop="4dp" android:scaleType="fitCenter" android:visibility="gone" android:contentDescription="@string/localized_088" />
+ </LinearLayout>
+ <ImageView android:id="@+id/card_group_thumbnail_3" android:layout_width="36dp" android:layout_height="36dp"
+     android:layout_marginStart="8dp" android:background="@drawable/avatar_circle" android:clipToOutline="true"
+     android:scaleType="centerCrop" android:visibility="gone" android:contentDescription="@string/localized_086" />
+ <TextView android:id="@+id/card_group_count_right_3" android:layout_width="32dp" android:layout_height="wrap_content"
+     android:layout_marginStart="16dp" android:layout_marginEnd="15dp" android:gravity="center" android:textColor="#FFABABB2"
+     android:textSize="14sp" android:visibility="gone" />
+</LinearLayout>
+    <TextView
+        android:id="@+id/card_group_badge_3"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="5dp"
+        android:layout_marginEnd="10dp"
+        android:background="@drawable/group_count_background"
+        android:gravity="center"
+        android:textColor="#FFF1F1F4"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+</FrameLayout>
