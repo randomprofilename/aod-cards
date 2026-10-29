@@ -61,7 +61,8 @@ class AodCardsWidgetProvider : AppWidgetProvider() {
                         // A full replacement clears secrets from the host on visibility changes.
                         if (!force && previous?.key == key && hidden == previous.hidden) return@forEach
                         val plan = WidgetRenderModel.build(cards, settings, music, width, height, context)
-                        val views = WidgetRenderer.createViews(context, cards, settings, music, scale, width, height, screenInteractive, plan)
+                        val views = WidgetRenderer.createViews(context, cards, settings, music, scale, width, height,
+                            screenInteractive, plan, enableUnlockTap = true)
                         // LockStar can measure its remote child with a zero-sized
                         // parent spec while restoring an AOD container. Explicit
                         // bounds prevent MATCH_PARENT/WRAP_CONTENT collapsing to 0.

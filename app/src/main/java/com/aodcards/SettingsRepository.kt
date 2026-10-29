@@ -11,6 +11,14 @@ class SettingsRepository(context: Context) {
         if (!prefs.contains("blocked_packages")) {
             prefs.edit().putStringSet("blocked_packages", emptySet()).remove("allowed_packages").apply()
         }
+        // This feature was initially shipped with a disabled default during testing.
+        // Turn it on once for existing installs; subsequent user choices are preserved.
+        if (!prefs.getBoolean("tap_to_unlock_default_enabled_v1", false)) {
+            prefs.edit()
+                .putBoolean("unstable_tap_to_unlock", true)
+                .putBoolean("tap_to_unlock_default_enabled_v1", true)
+                .apply()
+        }
     }
     val showText: Boolean
         get() = prefs.getBoolean("show_text", true)
@@ -42,6 +50,9 @@ class SettingsRepository(context: Context) {
     var showWhenScreenOn: Boolean
         get() = prefs.getBoolean("show_when_screen_on", false)
         set(value) { prefs.edit().putBoolean("show_when_screen_on", value).apply() }
+    var tapToUnlockEnabled: Boolean
+        get() = prefs.getBoolean("unstable_tap_to_unlock", true)
+        set(value) { prefs.edit().putBoolean("unstable_tap_to_unlock", value).apply() }
     var overflowBadgePosition: Int
         get() = prefs.getInt("overflow_badge_position", 1).coerceIn(0, 2)
         set(value) { prefs.edit().putInt("overflow_badge_position", value.coerceIn(0, 2)).apply() }

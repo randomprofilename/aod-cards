@@ -1,0 +1,5 @@
+<resources>
+    <!-- Distinct IDs force hosts to replace the tree when tap behavior changes. -->
+    <item name="widget_cards_passive" type="layout">@layout/widget_cards_grouped</item>
+    <item name="widget_cards_tap_unlock" type="layout">@layout/widget_cards_grouped</item>
+</resources>

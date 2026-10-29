@@ -181,6 +181,7 @@ class RegressionInstrumentation : Instrumentation() {
         val failures = mutableListOf<String>()
         val checks: List<Pair<String, () -> Unit>> = listOf(
             "privacy" to ::checkPrivacy,
+            "widget unlock interaction" to ::checkWidgetUnlockInteraction,
             "refresh queue" to ::checkRefreshQueue,
             "optimized rendering" to ::checkOptimizedRendering,
             "localization" to ::checkLocalization,
@@ -201,6 +202,50 @@ class RegressionInstrumentation : Instrumentation() {
             try { run() } catch (e: Throwable) { failures += "$name: ${e.stackTraceToString()}" }
         }
         check(failures.isEmpty()) { failures.joinToString("\n\n") }
+    }
+
+    private fun checkWidgetUnlockInteraction() {
+        val host = FrameLayout(isolated)
+        fun views(live: Boolean) = WidgetRenderer.createViews(isolated, listOf(card("tap")),
+            settings, null, 1f, 398, 289, enableUnlockTap = live)
+        val previous = settings.tapToUnlockEnabled
+        try {
+            check(settings.tapToUnlockEnabled) { "Unlock on tap must be on by default" }
+            val widgetHost = android.appwidget.AppWidgetHostView(isolated)
+            val enabledViews = views(true)
+            widgetHost.updateAppWidget(enabledViews)
+            val enabledRoot = widgetHost.getChildAt(0)
+            check(enabledRoot.hasOnClickListeners() && enabledRoot.isClickable) { "Enabled live widget must handle taps, including gaps" }
+            val enabledKey = WidgetUpdateKey.create(isolated, emptyList(), null, settings, 398, 289, true)
+            settings.tapToUnlockEnabled = false
+            check(!SettingsRepository(isolated).tapToUnlockEnabled) { "Unlock setting was not persisted" }
+            val disabledKey = WidgetUpdateKey.create(isolated, emptyList(), null, settings, 398, 289, true)
+            check(enabledKey != disabledKey) { "Toggling unlock must invalidate the widget update cache" }
+            val disabledViews = views(true)
+            check(disabledViews.layoutId != enabledViews.layoutId) { "Tap behavior must replace the host tree" }
+            widgetHost.updateAppWidget(disabledViews)
+            val disabledRoot = widgetHost.getChildAt(0)
+            check(disabledRoot !== enabledRoot && !disabledRoot.hasOnClickListeners() && !disabledRoot.isClickable) {
+                "Disabling unlock must clear the existing host action"
+            }
+            settings.tapToUnlockEnabled = true
+            val preview = views(false).apply(isolated, host)
+            check(!preview.hasOnClickListeners() && !preview.isClickable) { "Preview must not launch unlock even when enabled" }
+        } finally {
+            settings.tapToUnlockEnabled = previous
+        }
+
+        val action = UnlockActivity.pendingIntent(isolated)
+        check(action.isActivity && action.isImmutable && action.creatorPackage == targetContext.packageName)
+        val info = targetContext.packageManager.getActivityInfo(
+            android.content.ComponentName(targetContext, UnlockActivity::class.java),
+            android.content.pm.PackageManager.ComponentInfoFlags.of(0))
+        check(!info.exported) { "Other apps must not launch the unlock activity directly" }
+        check(info.taskAffinity.isNullOrEmpty()) { "Unlock must not share the settings activity task" }
+        check(info.launchMode == android.content.pm.ActivityInfo.LAUNCH_SINGLE_TASK) {
+            "Repeated taps must reuse the pending unlock instead of creating competing requests"
+        }
+        check(info.flags and android.content.pm.ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS != 0)
     }
 
     private fun checkPrivacy() {

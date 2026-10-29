@@ -564,6 +564,11 @@ class MainActivity : Activity() {
             updateWidget()
         }, wrap())
         addSeparator(behaviorCard)
+        behaviorCard.addView(switchRow(getString(R.string.tap_to_unlock), getString(R.string.tap_to_unlock_hint), settings.tapToUnlockEnabled) {
+            settings.tapToUnlockEnabled = it
+            updateWidget()
+        }, wrap())
+        addSeparator(behaviorCard)
         addSegmentedChoices(behaviorCard, getString(R.string.localized_056), listOf(SegmentedChoice(ChoiceGlyph.BADGE_POSITION, 0, getString(R.string.localized_057)), SegmentedChoice(ChoiceGlyph.BADGE_POSITION, 1, getString(R.string.localized_058)), SegmentedChoice(ChoiceGlyph.BADGE_POSITION, 2, getString(R.string.localized_059))), settings.overflowBadgePosition) {
             settings.overflowBadgePosition = it
             renderPreview()

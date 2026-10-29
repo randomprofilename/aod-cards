@@ -31,10 +31,17 @@ object WidgetRenderer {
         width: Int,
         height: Int,
         screenInteractive: Boolean = false,
-        plan: WidgetRenderModel = WidgetRenderModel.build(cards, settings, music, width, height, context)
+        plan: WidgetRenderModel = WidgetRenderModel.build(cards, settings, music, width, height, context),
+        enableUnlockTap: Boolean = false
     ): RemoteViews {
-        // A distinct layout ID makes existing hosts reinflate after the order change.
-        val views = RemoteViews(context.packageName, R.layout.widget_cards_grouped)
+        val unlockOnTap = enableUnlockTap && settings.tapToUnlockEnabled
+        // Distinct IDs replace the host tree when disabling taps, removing both
+        // the old PendingIntent and View's clickable flag without remote reflection.
+        val views = RemoteViews(context.packageName,
+            if (unlockOnTap) R.layout.widget_cards_tap_unlock else R.layout.widget_cards_passive)
+        // The entire live widget, including gaps and hidden content, is a tap target.
+        // In-app previews must never request an unlock.
+        if (unlockOnTap) views.setOnClickPendingIntent(R.id.widget_root, UnlockActivity.pendingIntent(context))
         val hideContent = screenInteractive && !settings.showWhenScreenOn
         // The provider sets explicit root bounds for LockStar. Hidden content is
         // cleared as well as hidden; visibility alone would retain secrets in the host.
