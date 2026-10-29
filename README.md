@@ -29,8 +29,6 @@ Notification and music cards for Samsung Always On Display.
   <img src="preview.png" alt="In-app preview with demo notification cards and an overflow counter" width="520">
 </p>
 
-Cards appear while the screen is off. You can also keep them visible when the screen is on. Notification cards do not open individual notifications. The optional **Widget → Behavior → Unlock on tap** setting requests system unlock when you tap the live widget. It is enabled by default; only unlock animations started from the widget may be broken. Android still requires authentication when the device is locked. Taps in the in-app preview do nothing.
-
 ## Get started
 
 You’ll need a Samsung device running **Android 16 (API 36) or later**, plus **Good Lock / LockStar** with support for third-party AOD widgets. Availability depends on your firmware and LockStar version.
@@ -45,7 +43,7 @@ You’ll need a Samsung device running **Android 16 (API 36) or later**, plus **
 ## Known issues
 
 - **Widget dimming.** LockStar automatically dims the widget on Always On Display. This behavior cannot be adjusted in AOD Cards.
-- **Touch gestures over the widget.** The unstable **Unlock on tap** setting only works if LockStar forwards the tap. Only unlock animations started from the widget may be broken. Swipes and double-taps are handled by LockStar; the app cannot forward these gestures to the system. AOD touch behavior needs testing on your device.
+- **Touch gestures over the widget.** Android cannot pass touches through the widget to the lock screen, so **Unlock on tap** requests the unlock from the widget itself. The unlock animation may look a little choppy because of this.
 - **Blank widget.** The widget may occasionally appear empty. Removing it and adding it again can help. Bug reports are welcome.
 - **Google Play Protect warning.** Google Play Protect may flag the provided APK as dangerous. If you don’t trust the provided APK, you can [build it from source](#build).
 
