@@ -48,7 +48,7 @@ class NotificationListener : NotificationListenerService() {
     @Volatile private var lastFailure: String? = null
     private val mediaTracker by lazy { MediaTracker(this, refreshHandler) { scheduleRefresh() } }
     private val labelCache = android.util.LruCache<String, String>(128)
-    private data class CachedCard(val postTime: Long, val withPreview: Boolean, val mode: Int, val card: NotificationCard)
+    private data class CachedCard(val postTime: Long, val withPreview: Boolean, val mode: Int, val size: Int, val withSender: Boolean, val customEnabled: Boolean, val card: NotificationCard)
     private val cardCache = object : android.util.LruCache<String, CachedCard>(12 * 1024 * 1024) {
         override fun sizeOf(key: String, value: CachedCard): Int {
             val card = value.card
@@ -58,6 +58,9 @@ class NotificationListener : NotificationListenerService() {
                 (card.senderImage?.allocationByteCount ?: 0)).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
         }
     }
+    private val cardCacheHits = java.util.concurrent.atomic.AtomicLong()
+    private val cardCacheMisses = java.util.concurrent.atomic.AtomicLong()
+    private val canceledRenders = java.util.concurrent.atomic.AtomicLong()
     private val screenOffRefresh = Runnable {
         screenInteractive = (getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isInteractive
         AodCardsWidgetProvider.renderAll(this)
@@ -224,7 +227,6 @@ class NotificationListener : NotificationListenerService() {
             AodCardsWidgetProvider.renderAll(this)
         }
         scheduleRefresh(invalidate = replaces)
-        if (replaces) clearCardCache()
     }
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
         markSourceChanged(sbn.key)
@@ -237,7 +239,6 @@ class NotificationListener : NotificationListenerService() {
     }
     override fun onNotificationRankingUpdate(rankingMap: RankingMap) {
         rankingRevision++
-        clearCardCache()
         MusicSessionSnapshot.clearCache()
         // Update restrictions without waiting behind an attachment provider on the worker.
         val cards = CardState.value.cards.map { card ->
@@ -247,7 +248,9 @@ class NotificationListener : NotificationListenerService() {
             card.copy(lockscreenVisibilityOverride = override)
         }
         if (cards != CardState.value.cards) {
-            CardState.publish(CardState.value.copy(cards = cards, music = null))
+            val policy = NotificationPrivacy.read(this)
+            val prefs = SettingsRepository(this)
+            CardState.publish(CardState.value.copy(cards = policy.cards(cards, prefs), music = null))
             refreshSnapshot(this)
         } else scheduleRefresh()
     }
@@ -306,7 +309,7 @@ class NotificationListener : NotificationListenerService() {
                     music != null && sbn.packageName == music.packageName && isMediaNotification(sbn.notification)
                 }
                 .mapIndexedNotNull { index, sbn ->
-                    if (sbn.user != android.os.Process.myUserHandle()) return@mapIndexedNotNull null
+                    if (token != refreshQueue.revision || sbn.user != android.os.Process.myUserHandle()) return@mapIndexedNotNull null
                     val ranking = Ranking()
                     val hasRanking = rankingMap?.getRanking(sbn.key, ranking) == true
                     val notification = sbn.notification
@@ -315,7 +318,11 @@ class NotificationListener : NotificationListenerService() {
                         notification.extras?.getString("android.template")?.contains("MessagingStyle") == true
                     val overrideKey = if (hasRanking) ranking.overrideGroupKey else null
                     val visibilityOverride = if (hasRanking) ranking.lockscreenVisibilityOverride else Notification.VISIBILITY_PRIVATE
-                    val systemMode = privacy.mode(notification.visibility, visibilityOverride) ?: return@mapIndexedNotNull null
+                    val systemMode = privacy.mode(notification.visibility, visibilityOverride)
+                    if (systemMode == null) {
+                        cardCache.remove(sbn.key)
+                        return@mapIndexedNotNull null
+                    }
                     readCard(sbn, blockedPackages, index < 24, maxOf(systemMode, prefs.contentMode), token)?.copy(
                         lockscreenVisibility = notification.visibility,
                         lockscreenVisibilityOverride = visibilityOverride,
@@ -372,6 +379,9 @@ class NotificationListener : NotificationListenerService() {
         writer.println("state=${snapshot.connection} sourceCount=$sourceCount cards=${snapshot.cards.size} music=${snapshot.music != null} blocked=${snapshot.blockedCount}")
         writer.println("revision=${refreshQueue.revision} running=${refreshQueue.running} pending=${refreshQueue.pending} workerAlive=${workerThread.isAlive} lastFailure=$lastFailure")
         writer.println("updatedAt=${snapshot.updatedAt} screenInteractive=$screenInteractive powerInteractive=${(getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isInteractive} receiverRegistered=$screenReceiverRegistered")
+        val stats = CustomNotificationSnapshot.stats
+        writer.println("cardCacheBytes=${cardCache.size()} entries=${cardCache.snapshot().size} hits=${cardCacheHits.get()} misses=${cardCacheMisses.get()}")
+        writer.println("customRenders=${stats.attempts} successes=${stats.successes} totalMs=${stats.totalNanos / 1_000_000.0} maxMs=${stats.maxNanos / 1_000_000.0} lastBitmapBytes=${stats.lastBitmapBytes} canceled=$canceledRenders")
         val manager = android.appwidget.AppWidgetManager.getInstance(this)
         val settings = SettingsRepository(this)
         manager.getAppWidgetIds(ComponentName(this, AodCardsWidgetProvider::class.java)).forEach { id ->
@@ -391,20 +401,41 @@ class NotificationListener : NotificationListenerService() {
     private fun clearCardCache() = synchronized(cardCache) { cardCache.evictAll() }
 
     private fun readCard(sbn: StatusBarNotification, blockedPackages: Set<String>, withImages: Boolean, mode: Int, token: Int): NotificationCard? {
-        if (sbn.packageName == packageName || sbn.packageName in blockedPackages) return null
+        if (sbn.packageName == packageName || sbn.packageName in blockedPackages) {
+            cardCache.remove(sbn.key)
+            return null
+        }
         return try {
+            if (token != refreshQueue.revision) return null
+            val prefs = SettingsRepository(this)
+            val size = prefs.effectiveCustomNotificationScale
+            val ongoing = sbn.notification.flags and Notification.FLAG_ONGOING_EVENT != 0
+            val withSender = mode != 2 && !prefs.compactMode && (!ongoing || prefs.ongoingMode == 0)
+            val withPreview = withImages && mode == 0 && withSender
+            val sourceVersion = sourceChanges[sbn.key] ?: 0L
             val cached = cardCache.get(sbn.key)
-            if (cached?.postTime == sbn.postTime && cached.mode == mode && (!withImages || cached.withPreview)) {
-                if (withImages) cached.card else cached.card.copy(previewImage = null)
+            if (cached?.postTime == sbn.postTime && cached.mode == mode &&
+                cached.customEnabled == prefs.customNotificationsEnabled &&
+                (!cached.card.isCustomContent || cached.size == size) &&
+                (!withPreview || cached.withPreview) && (!withSender || cached.withSender)) {
+                cardCacheHits.incrementAndGet()
+                cached.card.copy(previewImage = cached.card.previewImage.takeIf { withPreview },
+                    senderImage = cached.card.senderImage.takeIf { withSender })
             } else {
+                cardCacheMisses.incrementAndGet()
+                // Parsing can now discard the notification; do not retain its old snapshot.
+                cardCache.remove(sbn.key)
                 val card = if (mode == 2) NotificationCard(sbn.key, sbn.packageName, appLabel(sbn.packageName),
                     null, "", "", sbn.postTime, sbn.notification.flags and Notification.FLAG_ONGOING_EVENT != 0, null, null)
-                else toCard(sbn, withImages && mode == 0)?.let { NotificationPrivacy.redact(it, mode) }
+                else toCard(sbn, withPreview, withSender, size, prefs.customNotificationsEnabled,
+                    keepImageOnly = prefs.compactMode && mode == 0 && withImages) {
+                    token == refreshQueue.revision && (sourceChanges[sbn.key] ?: 0L) == sourceVersion
+                }?.let { NotificationPrivacy.redact(it, mode) }
                 card?.also {
                     synchronized(cardCache) {
                         if (token == refreshQueue.revision && parsingRankingRevision == rankingRevision &&
                             (sourceChanges[sbn.key] ?: 0L) == (parsingChanges[sbn.key] ?: 0L)) {
-                            cardCache.put(sbn.key, CachedCard(sbn.postTime, withImages, mode, it))
+                            cardCache.put(sbn.key, CachedCard(sbn.postTime, withPreview, mode, size, withSender, prefs.customNotificationsEnabled, it))
                         }
                     }
                 }
@@ -416,7 +447,9 @@ class NotificationListener : NotificationListenerService() {
     }
 
     @Suppress("DEPRECATION")
-    private fun toCard(sbn: StatusBarNotification, withImages: Boolean): NotificationCard? {
+    private fun toCard(sbn: StatusBarNotification, withImages: Boolean, withSender: Boolean, size: Int, customEnabled: Boolean,
+        keepImageOnly: Boolean,
+        isCurrent: () -> Boolean): NotificationCard? {
         val n = sbn.notification ?: return null
         if (sbn.packageName == packageName) return null
         val extras = n.extras
@@ -451,15 +484,25 @@ class NotificationListener : NotificationListenerService() {
             if (messagePreviews.isNotEmpty()) body = messagePreviews.joinToString("\n")
         }
         if (senderName != null && title == senderName) title = ""
-        val image = if (withImages) extractImage(n, latest) else null
+        val hasCustomContent = customEnabled && title.isBlank() && body.isBlank() && n.contentView != null
+        val customContent = if (withImages && hasCustomContent)
+            renderCustomContent(n, sbn.packageName, WidgetRows.scaleFactor(size), isCurrent) else null
+        val image = customContent ?: if (withImages) extractImage(n, latest) else null
+        // Compact mode hides attachments, not the notification that carries them.
+        // Inspect metadata only: do not decode a hidden image or open its content URI.
+        val hiddenAttachment = keepImageOnly &&
+            (extras.getParcelable<Bitmap>(Notification.EXTRA_PICTURE) != null ||
+                latest?.let { it.dataMimeType?.startsWith("image/") == true && it.dataUri != null } == true)
         // The preview budget only limits large attachments. A sender's 64px avatar
         // is still needed when this notification appears late in the system list.
-        val senderImage = extractSenderImage(n, messages)
+        val senderImage = if (withSender) extractSenderImage(n, messages) else null
         val ongoing = n.flags and Notification.FLAG_ONGOING_EVENT != 0
-        if (ongoing && title.isBlank() && body.isBlank()) body = getString(R.string.localized_002)
-        if (title.isBlank() && body.isBlank() && image == null) return null
+        if (ongoing && title.isBlank() && body.isBlank() && !hasCustomContent) body = getString(R.string.localized_002)
+        // Keep the app identity when custom content is hidden, unsupported or over budget.
+        if (title.isBlank() && body.isBlank() && image == null && !hasCustomContent && !hiddenAttachment) return null
         return NotificationCard(sbn.key, sbn.packageName, appName, senderName, title, body, sbn.postTime,
             ongoing, image, senderImage,
+            isCustomContent = hasCustomContent,
             groupCount = maxOf(1, n.number, messages.size),
             displayTime = n.`when`.takeIf { it > 0 && extras.getBoolean(Notification.EXTRA_SHOW_WHEN, true) })
     }
@@ -495,6 +538,34 @@ class NotificationListener : NotificationListenerService() {
             val person = message.javaClass.getMethod("getSenderPerson").invoke(message) ?: return null
             person.javaClass.getMethod("getIcon").invoke(person) as? android.graphics.drawable.Icon
         } catch (_: Exception) { null }
+    }
+
+    /** RemoteViews must be inflated on the main thread; parsing otherwise stays on the worker. */
+    @Suppress("DEPRECATION")
+    private fun renderCustomContent(notification: Notification, packageName: String, scale: Float,
+        isCurrent: () -> Boolean): Bitmap? {
+        val remote = notification.contentView ?: return null
+        fun renderIfCurrent(): Bitmap? {
+            if (!isCurrent()) {
+                canceledRenders.incrementAndGet()
+                return null
+            }
+            return CustomNotificationSnapshot.render(this, remote, packageName, scale)
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) return renderIfCurrent()
+        val result = java.util.concurrent.atomic.AtomicReference<Bitmap?>()
+        val done = java.util.concurrent.CountDownLatch(1)
+        val task = Runnable {
+            try { result.set(renderIfCurrent()) }
+            finally { done.countDown() }
+        }
+        if (!refreshHandler.post(task)) return null
+        if (!done.await(1500, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+            refreshHandler.removeCallbacks(task)
+            Log.w("AODCards", "custom content timed out for $packageName")
+            return null
+        }
+        return result.get()
     }
 
     @Suppress("DEPRECATION")
@@ -575,9 +646,10 @@ class NotificationListener : NotificationListenerService() {
                 return
             }
             val service = active
-            // Invalidate before clearing: a slow old parse must not repopulate the cache.
+            // Invalidate in-flight work before applying the latest policy.
             if (service?.listenerConnected == true) service.scheduleRefresh(0L, invalidate = true)
-            service?.clearCardCache()
+            // Rendering policy is checked again below and on every cache read. Screen,
+            // ranking and privacy events do not change the notification's pixels.
             MusicSessionSnapshot.clearCache()
             WidgetLayout.clearCache()
             val prefs = SettingsRepository(context)

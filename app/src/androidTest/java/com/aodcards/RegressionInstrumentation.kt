@@ -19,10 +19,14 @@ class RegressionInstrumentation : Instrumentation() {
     private lateinit var settings: SettingsRepository
     private var pickerOnly = false
     private var privacyOnly = false
+    private var liveSnapshotOnly = false
+    private var customSettingsOnly = false
     private var wakeTestWindow = false
 
     override fun onCreate(arguments: Bundle?) {
         privacyOnly = arguments?.getString("privacy_only") == "true"
+        liveSnapshotOnly = arguments?.getString("live_snapshot_only") == "true"
+        customSettingsOnly = arguments?.getString("custom_settings_only") == "true"
         pickerOnly = arguments?.getString("picker_only") == "true"
         wakeTestWindow = arguments?.getString("wake_test_window") == "true"
         super.onCreate(arguments)
@@ -54,6 +58,63 @@ class RegressionInstrumentation : Instrumentation() {
             }
             isolated.getSharedPreferences("settings", 0).edit().clear().commit()
             settings = SettingsRepository(isolated)
+            check(!settings.customNotificationsEnabled) { "Original notification layout must be off by default" }
+            check(!settings.customHideAppIcon) { "Original layouts must show the app icon by default" }
+            if (customSettingsOnly) {
+                val activity = startActivitySync(Intent(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                waitForIdleSync()
+                onMain { checkCustomSettingsUi(activity) }
+                waitForIdleSync()
+                onMain {
+                    check(MainActivity::class.java.getDeclaredField("originalLayoutHelpDialog")
+                        .apply { isAccessible = true }.get(activity) == null) { "Dismissed help retained its dialog" }
+                    activity.finish()
+                }
+                result.putString("stream", "PASS: last Widget settings block, custom toggle and size controls")
+                finish(Activity.RESULT_OK, result)
+                return
+            }
+            if (liveSnapshotOnly) {
+                onMain { NotificationListener.forceRefresh(targetContext) }
+                for (attempt in 0 until 100) {
+                    if (NotificationListener.snapshot().isNotEmpty()) break
+                    Thread.sleep(100)
+                }
+                onMain {
+                    val cards = NotificationListener.snapshot()
+                    check(cards.isNotEmpty()) { "No live notifications available" }
+                    settings.contentMode = 0
+                    settings.compactMode = false
+                    settings.ongoingMode = 0
+                    run {
+                        val size = SettingsRepository(targetContext).widgetScale
+                        settings.widgetScale = size
+                        val root = WidgetRenderer.createViews(isolated, cards, settings, null,
+                            WidgetRows.scaleFactor(size), 413, 1000).apply(isolated, FrameLayout(isolated))
+                        root.measure(View.MeasureSpec.makeMeasureSpec((413 * isolated.resources.displayMetrics.density + .5f).toInt(), View.MeasureSpec.EXACTLY),
+                            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                        root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+                        val bitmap = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
+                        val canvas = Canvas(bitmap)
+                        canvas.drawColor(android.graphics.Color.BLACK)
+                        root.draw(canvas)
+                        File(targetContext.cacheDir, "live-widget.png").outputStream().use {
+                            bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+                        }
+                        bitmap.recycle()
+                    }
+                    cards.forEachIndexed { index, card ->
+                        card.previewImage?.let { bitmap ->
+                            File(targetContext.cacheDir, "live-snapshot-$index.png").outputStream().use {
+                                bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+                            }
+                        }
+                    }
+                }
+                result.putString("stream", "PASS: captured live snapshots in private app cache")
+                finish(Activity.RESULT_OK, result)
+                return
+            }
             if (privacyOnly) {
                 onMain { checkCoreRegression() }
                 result.putString("stream", "PASS: all core regressions, privacy policy matrix, filtering before grouping, hidden RemoteViews cleanup, cache revision and size guards, rendering")
@@ -194,6 +255,8 @@ class RegressionInstrumentation : Instrumentation() {
             "rendering" to ::checkRendering,
             "avatars" to ::checkAvatars,
             "packing" to ::checkPacking,
+            "custom notification snapshots" to ::checkCustomSnapshots,
+            "notification rendering cache" to ::checkNotificationRenderingCache,
             "header width" to ::checkHeaderWidth,
             "preview stage" to ::checkPreviewStage,
             "scale transitions" to ::checkScaleTransitions
@@ -294,13 +357,8 @@ class RegressionInstrumentation : Instrumentation() {
             settings.ongoingMode = 0
             val views = WidgetRenderer.createViews(isolated, listOf(sensitive), settings,
                 track, 1f, 360, 4000, true).apply(isolated, FrameLayout(isolated))
-            WidgetRows.notificationRows.forEach { ids ->
-                listOf(ids.sender, ids.title, ids.text).forEach { id ->
-                    check(views.findViewById<TextView>(id).text.isEmpty()) { "Hidden host tree retained text" }
-                }
-                listOf(ids.avatar, ids.image, ids.groupThumbnail).forEach { id ->
-                    check(views.findViewById<android.widget.ImageView>(id).drawable == null)
-                }
+            check(views.findViewById<android.view.ViewGroup>(R.id.widget_notification_container).childCount == 0) {
+                "Hidden host tree retained notification rows"
             }
             check(views.findViewById<TextView>(R.id.music_title).text.isEmpty())
         } finally {
@@ -408,26 +466,20 @@ class RegressionInstrumentation : Instrumentation() {
             fun views(items: List<NotificationCard>, track: MusicTrack? = music) =
                 WidgetRenderer.createViews(isolated, items, settings, track, 1f, 360, 4000)
             val root = views(cards).apply(isolated, FrameLayout(isolated))
-            val image = root.findViewById<android.widget.ImageView>(R.id.card_image_0)
             WidgetRenderer.createViews(isolated, cards, settings, music, 1f, 360, 4000, true).reapply(isolated, root)
             check(root.findViewById<View>(R.id.widget_content).visibility == View.INVISIBLE)
             check(root.findViewById<View>(R.id.widget_overflow_row).visibility == View.GONE)
-            check(image.drawable == null) { "Hidden widget retained an attachment" }
+            check(root.findViewById<android.view.ViewGroup>(R.id.widget_notification_container).childCount == 0) { "Hidden widget retained rows" }
             views(cards).reapply(isolated, root)
             check(root.findViewById<View>(R.id.widget_content).visibility == View.VISIBLE)
             check(root.findViewById<View>(R.id.widget_overflow_row).visibility == View.VISIBLE)
             views(listOf(cards.first().copy(previewImage = null, senderImage = null)), null).reapply(isolated, root)
-            check(image.drawable == null) { "Removed attachment remained in the ImageView" }
-            check(root.findViewById<android.widget.ImageView>(R.id.app_icon_badge_0).drawable == null)
+            check(root.findViewById<android.widget.ImageView>(R.id.card_image).drawable == null) { "Removed attachment remained in the ImageView" }
+            check(root.findViewById<android.widget.ImageView>(R.id.app_icon_badge).drawable == null)
             check(root.findViewById<android.widget.ImageView>(R.id.music_art).drawable == null)
-            WidgetRows.notificationRows.drop(1).forEach { ids ->
-                listOf(ids.avatar, ids.badgeIcon, ids.image, ids.groupThumbnail).forEach { id ->
-                    check(root.findViewById<android.widget.ImageView>(id).drawable == null) { "Hidden row retained bitmap" }
-                }
-                check(root.findViewById<TextView>(ids.text).text.isEmpty())
-            }
+            check(root.findViewById<android.view.ViewGroup>(R.id.widget_notification_container).childCount == 1)
             views(emptyList(), null).reapply(isolated, root)
-            check(root.findViewById<android.widget.ImageView>(R.id.avatar_main_0).drawable == null)
+            check(root.findViewById<View>(R.id.avatar_main) == null)
             views(emptyList(), null).reapply(isolated, root)
             check(root.findViewById<View>(R.id.widget_overflow_row).visibility == View.GONE)
         } finally {
@@ -469,6 +521,134 @@ class RegressionInstrumentation : Instrumentation() {
             type.getDeclaredMethod("updatePreviewSecurity").apply { isAccessible = true }.invoke(activity)
             CardState.publish(oldSnapshot)
             select.invoke(activity, oldTab)
+        }
+    }
+
+    private fun checkCustomSettingsUi(activity: Activity) {
+        val type = MainActivity::class.java
+        val prefsField = type.getDeclaredField("settings").apply { isAccessible = true }
+        val originalPrefs = prefsField.get(activity)
+        val originalSnapshot = CardState.value
+        val refresh = type.getDeclaredMethod("updateContentControls").apply { isAccessible = true }
+        val select = type.getDeclaredMethod("selectTab", Int::class.javaPrimitiveType).apply { isAccessible = true }
+        try {
+            // Exercise real controls using isolated preferences; user settings stay intact.
+            prefsField.set(activity, settings)
+            settings.contentMode = 0
+            settings.compactMode = false
+            select.invoke(activity, 0)
+            val root = activity.window.decorView
+            val experimental = root.findViewWithTag<android.widget.LinearLayout>("experimental_settings")
+            val experimentalBody = root.findViewWithTag<View>("experimental_content")
+            val experimentalHeader = root.findViewWithTag<View>("experimental_header")
+            val groups = experimental.parent as android.view.ViewGroup
+            check(groups.getChildAt(groups.childCount - 1) === experimental) { "Experimental is not the last Widget block" }
+            check(experimentalBody.visibility == View.GONE) { "Experimental must start collapsed" }
+            val beforeExpansion = WidgetStyle.read(settings)
+            val rendersBeforeExpansion = CustomNotificationSnapshot.stats.attempts
+            experimentalHeader.performClick()
+            check(experimentalBody.visibility == View.VISIBLE)
+            check(WidgetStyle.read(settings) == beforeExpansion)
+            check(CustomNotificationSnapshot.stats.attempts == rendersBeforeExpansion)
+            val card = root.findViewWithTag<android.widget.LinearLayout>("custom_notification_settings")
+            check(card != null)
+            val parent = card.parent as android.view.ViewGroup
+            check(parent.getChildAt(parent.childCount - 1) === card) { "Custom settings are not the last Widget block" }
+            val toggleRow = card.getChildAt(0) as android.view.ViewGroup
+            val toggle = toggleRow.getChildAt(1) as OneUiSwitch
+            val choices = type.getDeclaredField("customScaleChoices").apply { isAccessible = true }.get(activity) as android.view.ViewGroup
+            fun choice(index: Int) = choices.getChildAt(index)
+            settings.customNotificationsEnabled = true
+            toggle.isChecked = true
+            refresh.invoke(activity)
+            check(activity.getString(R.string.custom_notifications_scale_default) == "Default")
+            val hideRow = card.findViewWithTag<android.view.ViewGroup>("original_layout_hide_icon")
+            val hideToggle = hideRow.getChildAt(1) as OneUiSwitch
+            check(!hideToggle.isChecked)
+            hideToggle.isChecked = true
+            check(settings.customHideAppIcon)
+            hideToggle.isChecked = false
+            check(!settings.customHideAppIcon)
+            choice(3).performClick()
+            check(settings.customNotificationScale == 2)
+            toggle.isChecked = false
+            check(!settings.customNotificationsEnabled && (0..3).none { choice(it).isEnabled })
+            check(!hideToggle.isEnabled)
+            toggle.isChecked = true
+            check(settings.customNotificationsEnabled && (0..3).all { choice(it).isEnabled })
+            choice(0).performClick()
+            check(settings.customNotificationScale == -1)
+            settings.compactMode = true
+            refresh.invoke(activity)
+            check((0..3).none { choice(it).isEnabled })
+            settings.compactMode = false
+            toggle.isChecked = false
+            refresh.invoke(activity)
+            check(!settings.customNotificationsEnabled)
+            val help = root.findViewWithTag<View>("original_notification_layout_heading").findViewWithTag<View>("settings_help")
+            val beforeHelp = CustomNotificationSnapshot.stats.attempts
+            help.performClick()
+            val dialog = type.getDeclaredField("originalLayoutHelpDialog").apply { isAccessible = true }.get(activity) as android.app.Dialog
+            check(dialog.isShowing && !settings.customNotificationsEnabled)
+            val helpRoot = dialog.window!!.decorView
+            val helpWidth = dialog.window!!.attributes.width
+            val helpHeight = dialog.window!!.attributes.height
+            helpRoot.measure(View.MeasureSpec.makeMeasureSpec(helpWidth, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(helpHeight, View.MeasureSpec.EXACTLY))
+            helpRoot.layout(0, 0, helpWidth, helpHeight)
+            val image = helpRoot.findViewWithTag<android.widget.ImageView>("original_layout_help_image")
+            check(image.drawable is android.graphics.drawable.BitmapDrawable)
+            check(CustomNotificationSnapshot.stats.attempts == beforeHelp) { "Help rendered a personal notification" }
+            val helpScreenshot = Bitmap.createBitmap(helpWidth, helpHeight, Bitmap.Config.ARGB_8888)
+            helpRoot.draw(Canvas(helpScreenshot))
+            File(targetContext.cacheDir, "original-layout-help.png").outputStream().use {
+                helpScreenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
+            }
+            helpScreenshot.recycle()
+            helpRoot.findViewWithTag<View>("original_layout_help_close").performClick()
+            check(!dialog.isShowing)
+            val width = root.width.takeIf { it > 0 } ?: activity.resources.displayMetrics.widthPixels
+            val height = root.height.takeIf { it > 0 } ?: activity.resources.displayMetrics.heightPixels
+            fun capture(name: String) {
+                root.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
+                root.layout(0, 0, width, height)
+                val title = root.findViewWithTag<TextView>("experimental_title")
+                val flask = root.findViewWithTag<View>("experimental_flask")
+                val glyphs = android.graphics.Rect()
+                title.paint.getTextBounds(title.text.toString(), 0, title.text.length, glyphs)
+                val textCentre = title.top + title.baseline + glyphs.exactCenterY()
+                val iconCentre = flask.top + flask.translationY + flask.height / 2f
+                if (experimentalBody.visibility == View.VISIBLE) {
+                    check(kotlin.math.abs(textCentre - iconCentre) <= 1f) { "Flask is not centred with the title" }
+                }
+                var ancestor: android.view.ViewParent? = experimental.parent
+                while (ancestor != null) {
+                    if (ancestor is android.widget.ScrollView) ancestor.scrollTo(0, ancestor.getChildAt(0).height)
+                    ancestor = ancestor.parent
+                }
+                toggle.jumpDrawablesToCurrentState()
+                val screenshot = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                root.draw(Canvas(screenshot))
+                File(targetContext.cacheDir, name).outputStream().use {
+                    screenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
+                }
+                screenshot.recycle()
+            }
+            capture("experimental-settings-expanded.png")
+            val beforeCollapse = WidgetStyle.read(settings)
+            val rendersBeforeCollapse = CustomNotificationSnapshot.stats.attempts
+            experimentalHeader.performClick()
+            check(experimentalBody.visibility == View.GONE)
+            check(WidgetStyle.read(settings) == beforeCollapse) { "Collapsing Experimental changed feature settings" }
+            check(CustomNotificationSnapshot.stats.attempts == rendersBeforeCollapse)
+            capture("experimental-settings-collapsed.png")
+            experimentalHeader.performClick()
+            check(experimentalBody.visibility == View.VISIBLE)
+            check(settings.customNotificationScale == -1 && !settings.customNotificationsEnabled)
+        } finally {
+            prefsField.set(activity, originalPrefs)
+            CardState.publish(originalSnapshot)
         }
     }
 
@@ -515,7 +695,7 @@ class RegressionInstrumentation : Instrumentation() {
         check(!settings.showWhenScreenOn)
         val previousMusic = settings.musicPillEnabled
         settings.musicPillEnabled = true
-        val cards = (1..14).map { card(it.toString()) }
+        val cards = (1..14).map { card(it.toString()).copy(title = "Card $it", postTime = 0) }
         val music = MusicTrack("player", "Track", "Artist", null)
         fun render(interactive: Boolean) = WidgetRenderer.createViews(isolated, cards, settings, music,
             1f, 360, 4000, interactive).apply(isolated, FrameLayout(isolated))
@@ -527,7 +707,7 @@ class RegressionInstrumentation : Instrumentation() {
         root = render(true)
         check(root.findViewById<View>(R.id.widget_content).visibility == View.VISIBLE)
         check(root.findViewById<View>(R.id.music_pill).visibility == View.VISIBLE)
-        check(root.findViewById<View>(R.id.card_shell_0).visibility == View.VISIBLE)
+        check(root.findViewById<View>(R.id.card_shell).visibility == View.VISIBLE)
         check(root.findViewById<View>(R.id.widget_overflow_row).visibility == View.VISIBLE)
         settings.showWhenScreenOn = false
         check(render(false).findViewById<View>(R.id.widget_content).visibility == View.VISIBLE)
@@ -544,12 +724,12 @@ class RegressionInstrumentation : Instrumentation() {
         fun render() = WidgetRenderer.createViews(isolated, listOf(sample), settings, null, 1f, 360, 400)
             .apply(isolated, FrameLayout(isolated))
         settings.compactMode = false
-        val badge = render().findViewById<View>(R.id.app_icon_badge_frame_0)
+        val badge = render().findViewById<View>(R.id.app_icon_badge_frame)
         check(badge.visibility == View.VISIBLE)
         check((badge.background as android.graphics.drawable.ColorDrawable).color == android.graphics.Color.TRANSPARENT)
         check(badge.paddingLeft == 0 && badge.paddingRight == 0)
         settings.compactMode = true
-        check(render().findViewById<View>(R.id.app_icon_badge_frame_0).visibility == View.GONE)
+        check(render().findViewById<View>(R.id.app_icon_badge_frame).visibility == View.GONE)
         settings.compactMode = false
         avatar.recycle()
     }
@@ -560,12 +740,12 @@ class RegressionInstrumentation : Instrumentation() {
         fun views(item: NotificationCard) = WidgetRenderer.createViews(isolated, listOf(item), settings, null, 1f, 360, 400)
         settings.compactMode = false
         val root = views(grouped).apply(isolated, FrameLayout(isolated))
-        check(root.findViewById<View>(R.id.app_icon_badge_frame_0).visibility == View.GONE)
-        check(root.findViewById<View>(R.id.card_author_count_0).visibility == View.GONE)
-        val image = root.findViewById<android.widget.ImageView>(R.id.card_group_thumbnail_0)
+        check(root.findViewById<View>(R.id.app_icon_badge_frame).visibility == View.GONE)
+        check(root.findViewById<View>(R.id.card_author_count).visibility == View.GONE)
+        val image = root.findViewById<android.widget.ImageView>(R.id.card_group_thumbnail)
         check(image.visibility == View.VISIBLE)
         check((image.drawable as android.graphics.drawable.BitmapDrawable).bitmap.getPixel(32, 32) == android.graphics.Color.MAGENTA)
-        check(root.findViewById<TextView>(R.id.card_group_count_right_0).text == "2")
+        check(root.findViewById<TextView>(R.id.card_group_count_right).text == "2")
         for (width in listOf(180, 360, 430)) {
             var expectedPositions: List<Int>? = null
             for (count in listOf(2, 19, 123)) {
@@ -576,10 +756,10 @@ class RegressionInstrumentation : Instrumentation() {
             view.measure(View.MeasureSpec.makeMeasureSpec((width * density).toInt(), View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
             view.layout(0, 0, view.measuredWidth, view.measuredHeight)
-            val shell = view.findViewById<android.view.ViewGroup>(R.id.card_shell_0)
-            val column = view.findViewById<View>(R.id.card_content_column_0)
-            val thumb = view.findViewById<View>(R.id.card_group_thumbnail_0)
-            val counter = view.findViewById<View>(R.id.card_group_count_right_0)
+            val shell = view.findViewById<android.view.ViewGroup>(R.id.card_shell)
+            val column = view.findViewById<View>(R.id.card_content_column)
+            val thumb = view.findViewById<View>(R.id.card_group_thumbnail)
+            val counter = view.findViewById<View>(R.id.card_group_count_right)
             check(column.right <= thumb.left && thumb.right <= counter.left && counter.right <= shell.width) {
                 "Grouped card content overlaps or is clipped: width=$width count=$count"
             }
@@ -592,11 +772,11 @@ class RegressionInstrumentation : Instrumentation() {
         settings.compactMode = true
         views(grouped).reapply(isolated, root)
         check(image.visibility == View.GONE)
-        check(root.findViewById<View>(R.id.card_group_count_right_0).visibility == View.VISIBLE)
+        check(root.findViewById<View>(R.id.card_group_count_right).visibility == View.VISIBLE)
         settings.compactMode = false
         views(grouped.copy(groupCount = 1, isCollapsedGroup = false)).reapply(isolated, root)
-        check(root.findViewById<View>(R.id.card_group_count_right_0).visibility == View.GONE)
-        check(root.findViewById<View>(R.id.app_icon_badge_frame_0).visibility == View.VISIBLE)
+        check(root.findViewById<View>(R.id.card_group_count_right).visibility == View.GONE)
+        check(root.findViewById<View>(R.id.app_icon_badge_frame).visibility == View.VISIBLE)
         avatar.recycle()
     }
 
@@ -612,7 +792,7 @@ class RegressionInstrumentation : Instrumentation() {
             view.measure(View.MeasureSpec.makeMeasureSpec((width * context.resources.displayMetrics.density).toInt(), View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
             view.layout(0, 0, view.measuredWidth, view.measuredHeight)
-            val body = view.findViewById<TextView>(R.id.card_text_0)
+            val body = view.findViewById<TextView>(R.id.card_text)
             check(body.text.toString().endsWith("LATEST"))
             check(!body.text.toString().contains("Old message"))
             check(body.layout.lineCount <= lines && body.layout.getEllipsisCount(body.layout.lineCount - 1) == 0) {
@@ -620,7 +800,7 @@ class RegressionInstrumentation : Instrumentation() {
             }
             val nonConversation = sample.copy(isConversation = false)
             val ordinary = WidgetRenderer.createViews(context, listOf(nonConversation), settings, null, 1f, width, 1000)
-                .apply(context, FrameLayout(context)).findViewById<TextView>(R.id.card_text_0)
+                .apply(context, FrameLayout(context)).findViewById<TextView>(R.id.card_text)
             check(ordinary.text.toString() == messages)
         }
         settings.maxTextLines = 2
@@ -809,28 +989,45 @@ class RegressionInstrumentation : Instrumentation() {
         settings.contentMode = 0
         settings.musicPillEnabled = true
         settings.ongoingMode = 0
-        val cards = (1..14).map { card(it.toString()) }
+        val cards = (1..14).map { card(it.toString()).copy(title = "Card $it", postTime = 0) }
         val music = MusicTrack("com.example.player", "Track", "Artist", null, true)
         fun views(list: List<NotificationCard>, track: MusicTrack? = null, interactive: Boolean = false) =
             WidgetRenderer.createViews(isolated, list, settings, track, 1f, 360, 4000, interactive)
         val root = views(cards, music).apply(isolated, FrameLayout(isolated))
         val content = root.findViewById<android.view.ViewGroup>(R.id.widget_content)
         check(content.getChildAt(0).id == R.id.widget_music_container) { "Music must appear above notifications" }
-        check(WidgetRows.notificationRows.all { root.findViewById<View>(it.shell).visibility == View.VISIBLE })
+        check(root.findViewById<android.view.ViewGroup>(R.id.widget_notification_container).childCount == WidgetRows.MAX_VISIBLE_CARDS)
         check(root.findViewById<android.view.ViewGroup>(R.id.widget_music_container).childCount == 1)
         check(root.findViewById<TextView>(R.id.music_artist).text.startsWith(isolated.getString(R.string.music_paused)))
         check(root.findViewById<TextView>(R.id.widget_overflow_center).text.toString() == "+2")
+        val rows = root.findViewById<android.view.ViewGroup>(R.id.widget_notification_container)
+        fun checkRows(expected: List<NotificationCard>) {
+            check(rows.childCount == expected.size)
+            expected.forEachIndexed { index, card ->
+                check(rows.getChildAt(index).findViewById<TextView>(R.id.card_title).text.toString() == card.title) {
+                    "Dynamic row $index contains another notification's content"
+                }
+            }
+        }
+        checkRows(cards.take(WidgetRows.MAX_VISIBLE_CARDS))
+        val firstRow = rows.getChildAt(0)
+        val reordered = cards.take(3).reversed()
+        views(reordered).reapply(isolated, root)
+        checkRows(reordered)
+        check(rows.getChildAt(0) === firstRow) { "Unchanged row template was not reused" }
+        views(listOf(cards[4])).reapply(isolated, root)
+        checkRows(listOf(cards[4]))
         views(cards.take(1)).reapply(isolated, root)
         check(root.findViewById<View>(R.id.music_pill).visibility == View.GONE)
-        check(WidgetRows.notificationRows.drop(1).all { root.findViewById<View>(it.shell).visibility == View.GONE })
+        check(root.findViewById<android.view.ViewGroup>(R.id.widget_notification_container).childCount == 1)
         views(emptyList()).reapply(isolated, root)
-        check(WidgetRows.notificationRows.all { root.findViewById<View>(it.shell).visibility == View.GONE })
+        check(root.findViewById<android.view.ViewGroup>(R.id.widget_notification_container).childCount == 0)
         check(root.findViewById<View>(R.id.widget_overflow_center).visibility == View.GONE)
         check(root.findViewById<View>(R.id.widget_overflow_row).visibility == View.GONE)
         views(listOf(card("group", true).copy(isOngoingGroup = true))).reapply(isolated, root)
-        check(root.findViewById<View>(R.id.card_group_badge_0).visibility == View.VISIBLE)
+        check(root.findViewById<View>(R.id.card_group_badge).visibility == View.VISIBLE)
         views(emptyList()).reapply(isolated, root)
-        check(root.findViewById<View>(R.id.card_group_badge_0).visibility == View.GONE)
+        check(root.findViewById<View>(R.id.card_group_badge) == null)
         views(cards, music, true).reapply(isolated, root)
         check(root.visibility == View.VISIBLE)
         check(root.findViewById<View>(R.id.widget_content).visibility == View.INVISIBLE)
@@ -846,24 +1043,24 @@ class RegressionInstrumentation : Instrumentation() {
         root.layoutParams = android.view.ViewGroup.LayoutParams(360, 4000)
         measuredSize()
         check(root.findViewById<TextView>(R.id.music_title).text.isEmpty())
-        check(root.findViewById<TextView>(R.id.card_text_0).text.isEmpty())
+        check(root.findViewById<View>(R.id.card_text) == null)
         views(cards, music).reapply(isolated, root)
         check(measuredSize().second > 0)
         check(root.findViewById<View>(R.id.music_pill) === retainedMusic) { "Music was replaced during the AOD transition" }
         check(root.findViewById<View>(R.id.widget_content).visibility == View.VISIBLE)
         views(cards.take(1)).reapply(isolated, root)
         check(root.visibility == View.VISIBLE)
-        check(root.findViewById<View>(R.id.card_shell_0).visibility == View.VISIBLE)
+        check(root.findViewById<View>(R.id.card_shell).visibility == View.VISIBLE)
 
         settings.contentMode = 1
         views(cards.take(1), music).reapply(isolated, root)
-        check(root.findViewById<TextView>(R.id.card_title_0).visibility == View.GONE)
-        check(root.findViewById<TextView>(R.id.card_text_0).visibility == View.GONE)
-        check(root.findViewById<TextView>(R.id.app_name_0).text.toString() == "Same name")
+        check(root.findViewById<TextView>(R.id.card_title).visibility == View.GONE)
+        check(root.findViewById<TextView>(R.id.card_text).visibility == View.GONE)
+        check(root.findViewById<TextView>(R.id.app_name).text.toString() == "Same name")
         check(root.findViewById<View>(R.id.music_pill).visibility == View.GONE)
         settings.contentMode = 2
         views(cards.take(1)).reapply(isolated, root)
-        check(root.findViewById<TextView>(R.id.app_name_0).text.toString() == "App")
+        check(root.findViewById<TextView>(R.id.app_name).text.toString() == "App")
         settings.contentMode = 0
         val small = WidgetRenderModel.build(cards, settings, null, 180, 300, fontContext(1f))
         val large = WidgetRenderModel.build(cards, settings, null, 180, 300, fontContext(1.6f))
@@ -908,6 +1105,9 @@ class RegressionInstrumentation : Instrumentation() {
 
     @Suppress("DEPRECATION")
     private fun checkAvatars() {
+        settings.customNotificationsEnabled = true
+        settings.compactMode = false
+        settings.ongoingMode = 0
         val avatar = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.MAGENTA) }
         val picture = Bitmap.createBitmap(320, 320, Bitmap.Config.ARGB_8888)
         val notification = android.app.Notification.Builder(targetContext, "regression")
@@ -918,7 +1118,7 @@ class RegressionInstrumentation : Instrumentation() {
             android.os.Process.myUserHandle(), System.currentTimeMillis())
         val service = NotificationListener()
         android.content.ContextWrapper::class.java.getDeclaredMethod("attachBaseContext", Context::class.java)
-            .apply { isAccessible = true }.invoke(service, targetContext)
+            .apply { isAccessible = true }.invoke(service, isolated)
         try {
             val read = NotificationListener::class.java.getDeclaredMethod("readCard",
                 android.service.notification.StatusBarNotification::class.java, Set::class.java, Boolean::class.javaPrimitiveType,
@@ -936,6 +1136,29 @@ class RegressionInstrumentation : Instrumentation() {
             check(appOnly.senderImage == null && appOnly.previewImage == null && appOnly.senderName == null && appOnly.text.isEmpty())
             val senderOnly = read.invoke(service, sbn, emptySet<String>(), true, 1, 0) as NotificationCard
             check(senderOnly.text.isEmpty() && senderOnly.title.isEmpty() && senderOnly.previewImage == null)
+            val customView = android.widget.RemoteViews("android", android.R.layout.simple_list_item_1).apply {
+                setTextViewText(android.R.id.text1, "Custom status")
+            }
+            @Suppress("DEPRECATION")
+            val customNotification = android.app.Notification.Builder(targetContext, "regression")
+                .setSmallIcon(android.R.drawable.ic_dialog_info).setCustomContentView(customView).build()
+            val customSbn = android.service.notification.StatusBarNotification("android", "android", 2, null,
+                android.os.Process.myUid(), 0, 0, customNotification, android.os.Process.myUserHandle(), System.currentTimeMillis())
+            fun parseCustom(preview: Boolean, mode: Int) = read.invoke(service, customSbn,
+                emptySet<String>(), preview, mode, 0) as NotificationCard
+            check(parseCustom(true, 0).let { it.isCustomContent && it.previewImage != null })
+            var previous: Bitmap? = null
+            for (size in listOf(0, 1, 2, 0)) {
+                settings.widgetScale = size
+                val selected = parseCustom(true, 0).previewImage!!
+                check(selected !== previous) { "Size change reused the previous custom snapshot" }
+                check(parseCustom(true, 0).previewImage === selected) { "Unchanged size missed the snapshot cache" }
+                previous = selected
+            }
+            settings.widgetScale = 1
+            check(parseCustom(false, 0).previewImage == null)
+            check(parseCustom(false, 1).let { it.previewImage == null && it.text.isEmpty() })
+            check(parseCustom(false, 2).previewImage == null)
             val older = card("older").copy(senderImage = avatar, systemGroupKey = "avatar-group")
             val newer = card("newer").copy(senderImage = null, systemGroupKey = "avatar-group", postTime = Long.MAX_VALUE)
             val summary = card("summary").copy(systemGroupKey = "avatar-group", isSystemGroupSummary = true)
@@ -946,8 +1169,8 @@ class RegressionInstrumentation : Instrumentation() {
             settings.contentMode = 0
             val views = WidgetRenderer.createViews(isolated, listOf(late), settings, null, 1f, 360, 265)
             val root = views.apply(isolated, FrameLayout(isolated))
-            check(root.findViewById<View>(R.id.app_icon_badge_frame_0).visibility == View.VISIBLE)
-            val drawable = root.findViewById<android.widget.ImageView>(R.id.avatar_main_0).drawable as android.graphics.drawable.BitmapDrawable
+            check(root.findViewById<View>(R.id.app_icon_badge_frame).visibility == View.VISIBLE)
+            val drawable = root.findViewById<android.widget.ImageView>(R.id.avatar_main).drawable as android.graphics.drawable.BitmapDrawable
             check(drawable.bitmap.getPixel(32, 32) == android.graphics.Color.MAGENTA)
 
             // Telegram can deliver multiple messages as one MessagingStyle
@@ -970,14 +1193,14 @@ class RegressionInstrumentation : Instrumentation() {
             check(twoMessages.displayTime != twoMessages.postTime)
             val twoViews = WidgetRenderer.createViews(isolated, listOf(twoMessages), settings, null, 1f, 360, 265)
             twoViews.reapply(isolated, root)
-            check(root.findViewById<TextView>(R.id.card_author_count_0).text.toString() == "2")
-            check(root.findViewById<View>(R.id.card_author_count_0).visibility == View.VISIBLE)
-            check(root.findViewById<TextView>(R.id.card_time_0).text.toString() ==
+            check(root.findViewById<TextView>(R.id.card_author_count).text.toString() == "2")
+            check(root.findViewById<View>(R.id.card_author_count).visibility == View.VISIBLE)
+            check(root.findViewById<TextView>(R.id.card_time).text.toString() ==
                 android.text.format.DateFormat.getTimeFormat(isolated).format(java.util.Date(1_700_000_000_000L)))
             val hiddenTime = parseMessages(1, 0, 4)
             check(hiddenTime.displayTime == null)
             WidgetRenderer.createViews(isolated, listOf(hiddenTime), settings, null, 1f, 360, 265).reapply(isolated, root)
-            check(root.findViewById<View>(R.id.card_time_0).visibility == View.GONE)
+            check(root.findViewById<View>(R.id.card_time).visibility == View.GONE)
             val oneMessage = parseMessages(1, 0, 3)
             check(oneMessage.groupCount == 1)
             check(parseMessages(2, 7, 4).groupCount == 7)
@@ -988,8 +1211,8 @@ class RegressionInstrumentation : Instrumentation() {
             check(systemGroup.groupCount == 5)
             check(WidgetRenderModel.build(listOf(systemGroup), settings, null, 360, 48, isolated).overflow == 5)
             WidgetRenderer.createViews(isolated, listOf(oneMessage), settings, null, 1f, 360, 265).reapply(isolated, root)
-            check(root.findViewById<View>(R.id.card_author_count_0).visibility == View.GONE)
-            check(root.findViewById<View>(R.id.card_time_0).visibility == View.VISIBLE)
+            check(root.findViewById<View>(R.id.card_author_count).visibility == View.GONE)
+            check(root.findViewById<View>(R.id.card_time).visibility == View.VISIBLE)
             val mark = NotificationListener::class.java.getDeclaredMethod("markSourceChanged", String::class.java)
                 .apply { isAccessible = true }
             repeat(2050) { mark.invoke(service, "synthetic-source-$it") }
@@ -1052,6 +1275,387 @@ class RegressionInstrumentation : Instrumentation() {
         settings.widgetScale = 1
     }
 
+    private fun checkNotificationRenderingCache() {
+        settings.customNotificationsEnabled = true
+        settings.contentMode = 0
+        settings.compactMode = false
+        settings.ongoingMode = 0
+        settings.widgetScale = 1
+        val service = NotificationListener()
+        ContextWrapper::class.java.getDeclaredMethod("attachBaseContext", Context::class.java)
+            .apply { isAccessible = true }.invoke(service, isolated)
+        fun field(name: String) = NotificationListener::class.java.getDeclaredField(name).apply { isAccessible = true }
+        val queue = field("refreshQueue").get(service) as RefreshQueue
+        val active = field("active")
+        val oldService = active.get(null)
+        val oldSnapshot = CardState.value
+        val read = NotificationListener::class.java.getDeclaredMethod("readCard",
+            android.service.notification.StatusBarNotification::class.java, Set::class.java,
+            Boolean::class.javaPrimitiveType, Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+            .apply { isAccessible = true }
+        val remote = android.widget.RemoteViews("android", android.R.layout.simple_list_item_1).apply {
+            setTextViewText(android.R.id.text1, "Cached custom row")
+        }
+        fun source(id: Int, ongoing: Boolean = false): android.service.notification.StatusBarNotification {
+            val notification = android.app.Notification.Builder(targetContext, "regression")
+                .setSmallIcon(android.R.drawable.ic_dialog_info).setCustomContentView(remote)
+                .setOngoing(ongoing).setVisibility(android.app.Notification.VISIBILITY_PUBLIC).build()
+            return android.service.notification.StatusBarNotification("android", "android", id, null,
+                android.os.Process.myUid(), 0, 0, notification, android.os.Process.myUserHandle(), 1000L)
+        }
+        fun parse(source: android.service.notification.StatusBarNotification, mode: Int = 0,
+            blocked: Set<String> = emptySet()): NotificationCard? {
+            // Mirror the worker's captured input revisions without starting a real service worker.
+            val changes = field("sourceChanges").get(service) as Map<*, *>
+            field("parsingChanges").set(service, changes.toMap())
+            field("parsingRankingRevision").setLong(service, field("rankingRevision").getLong(service))
+            return read.invoke(service, source, blocked, true, mode, queue.revision) as NotificationCard?
+        }
+        try {
+            val custom = source(700)
+            val before = CustomNotificationSnapshot.stats.attempts
+            val first = parse(custom)!!
+            check(CustomNotificationSnapshot.stats.attempts == before + 1)
+            repeat(10) { check(parse(custom)?.previewImage === first.previewImage) }
+            check(CustomNotificationSnapshot.stats.attempts == before + 1)
+            settings.customHideAppIcon = true
+            check(parse(custom)?.previewImage === first.previewImage)
+            check(CustomNotificationSnapshot.stats.attempts == before + 1) { "Hiding the app icon re-rendered the source notification" }
+            settings.customHideAppIcon = false
+
+            active.set(null, service)
+            field("listenerConnected").setBoolean(service, true)
+            val other = source(701)
+            CardState.publish(oldSnapshot.copy(cards = listOf(first, first.copy(key = other.key))))
+            service.onNotificationPosted(other)
+            check(parse(custom)?.previewImage === first.previewImage) { "Unrelated update discarded the custom cache" }
+
+            val parcel = android.os.Parcel.obtain()
+            val ranking = try {
+                parcel.writeInt(0)
+                parcel.setDataPosition(0)
+                android.service.notification.NotificationListenerService.RankingMap.CREATOR.createFromParcel(parcel)
+            } finally { parcel.recycle() }
+            service.onNotificationRankingUpdate(ranking)
+            check(parse(custom)?.previewImage === first.previewImage) { "Ranking update redrew unchanged content" }
+            val policy = NotificationPrivacy.read(isolated)
+            check(CardState.value.cards == policy.cards(CardState.value.cards, settings))
+
+            val receiver = field("screenReceiver").get(service) as android.content.BroadcastReceiver
+            receiver.onReceive(isolated, Intent(Intent.ACTION_SCREEN_OFF))
+            check(parse(custom)?.previewImage === first.previewImage) { "Screen off discarded the custom cache" }
+            receiver.onReceive(isolated, Intent(Intent.ACTION_SCREEN_ON))
+            check(parse(custom)?.previewImage === first.previewImage) { "Screen on discarded the custom cache" }
+            check(CustomNotificationSnapshot.stats.attempts == before + 1)
+
+            service.onNotificationPosted(custom)
+            check(parse(custom)?.previewImage !== first.previewImage)
+            check(CustomNotificationSnapshot.stats.attempts == before + 2) { "Changed source did not render exactly once" }
+
+            val hiddenStart = CustomNotificationSnapshot.stats.attempts
+            settings.compactMode = true
+            check(parse(source(702))?.let { it.previewImage == null && it.senderImage == null } == true)
+            settings.compactMode = false
+            settings.ongoingMode = 1
+            check(parse(source(703, true))?.previewImage == null)
+            settings.ongoingMode = 2
+            check(parse(source(704, true))?.previewImage == null)
+            check(parse(source(705), 1)?.previewImage == null)
+            check(parse(source(706), 2)?.previewImage == null)
+            check(CustomNotificationSnapshot.stats.attempts == hiddenStart) { "Hidden images were rendered" }
+            settings.ongoingMode = 0
+            check(parse(source(703, true))?.previewImage != null) { "Showing ongoing cards did not load their image" }
+            check(parse(source(702))?.previewImage != null) { "Disabling compact mode did not load the image" }
+            check(parse(custom, 2)?.let { it.previewImage == null && it.text.isEmpty() } == true)
+            check(parse(custom, blocked = setOf("android")) == null)
+            val cache = field("cardCache").get(service) as android.util.LruCache<*, *>
+            check(!cache.snapshot().containsKey(custom.key)) { "Blocked source retained its cached bitmap" }
+
+            // The override changes only custom cards, and keeps exactly the selected snapshot.
+            val configurable = source(710)
+            settings.widgetScale = 1
+            settings.customNotificationScale = -1
+            check(settings.customNotificationsEnabled)
+            val shared = parse(configurable)!!
+            val sharedKey = WidgetUpdateKey.create(isolated, listOf(shared), null, settings, 398, 220, true)
+            val sharedCount = CustomNotificationSnapshot.stats.attempts
+            settings.customNotificationScale = 1
+            check(parse(configurable)?.previewImage === shared.previewImage)
+            settings.widgetScale = 2
+            check(parse(configurable)?.previewImage === shared.previewImage) { "Global size redrew an overridden custom card" }
+            check(CustomNotificationSnapshot.stats.attempts == sharedCount)
+            settings.customNotificationScale = 2
+            val large = parse(configurable)!!
+            check(large.previewImage !== shared.previewImage)
+            check(CustomNotificationSnapshot.stats.attempts == sharedCount + 1)
+            for (global in 0..2) {
+                settings.widgetScale = global
+                val root = WidgetRenderer.createViews(isolated, listOf(large), settings, null,
+                    WidgetRows.scaleFactor(global), 398, 220).apply(isolated, FrameLayout(isolated))
+                root.measure(View.MeasureSpec.makeMeasureSpec((398 * isolated.resources.displayMetrics.density + .5f).toInt(), View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                val expectedIcon = (44f * WidgetRows.scaleFactor(global) * isolated.resources.displayMetrics.density + .5f).toInt()
+                check(root.findViewById<View>(R.id.avatar_main).measuredWidth == expectedIcon) {
+                    "Custom notification app icon ignores the shared size"
+                }
+            }
+            check(parse(configurable)?.previewImage === large.previewImage) { "Shared icon size redrew the overridden content" }
+            settings.customNotificationsEnabled = false
+            val hiddenCount = CustomNotificationSnapshot.stats.attempts
+            check(parse(configurable) == null) { "Disabled custom layouts must skip empty notifications" }
+            check(CustomNotificationSnapshot.stats.attempts == hiddenCount)
+            val ordinary = card("ordinary-photo").copy(previewImage = shared.previewImage)
+            val hiddenCards = WidgetRenderModel.prepare(listOf(large, ordinary), settings, null, isolated).first
+            check(hiddenCards.first { it.key == large.key }.previewImage == null)
+            check(hiddenCards.first { it.key == ordinary.key }.previewImage === shared.previewImage)
+            val disabledKey = WidgetUpdateKey.create(isolated, listOf(shared), null, settings, 398, 220, true)
+            check(sharedKey != disabledKey) { "Custom settings did not invalidate the widget update key" }
+            settings.customNotificationsEnabled = true
+            check(parse(configurable)?.previewImage != null)
+            check(CustomNotificationSnapshot.stats.attempts == hiddenCount + 1)
+            settings.customNotificationScale = -1
+            settings.widgetScale = 0
+            check(parse(configurable)?.previewImage != null)
+            check(CustomNotificationSnapshot.stats.attempts == hiddenCount + 2)
+            // Disabled means the legacy parser, including image-only and ongoing fallbacks.
+            settings.customNotificationsEnabled = false
+            val legacyRenders = CustomNotificationSnapshot.stats.attempts
+            check(parse(source(720)) == null)
+            val legacyOngoing = parse(source(721, true))!!
+            check(!legacyOngoing.isCustomContent && legacyOngoing.text == isolated.getString(R.string.localized_002))
+            val photoSource = source(722)
+            val photo = Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888)
+            photoSource.notification.extras.putParcelable(android.app.Notification.EXTRA_PICTURE, photo)
+            val legacyPhoto = parse(photoSource)!!
+            check(!legacyPhoto.isCustomContent && legacyPhoto.previewImage === photo)
+            check(WidgetRenderModel.prepare(listOf(legacyPhoto), settings, null, isolated)
+                .first.single().previewImage === photo) { "Disabled custom layouts hid an ordinary attachment" }
+            check(CustomNotificationSnapshot.stats.attempts == legacyRenders)
+            settings.customNotificationsEnabled = true
+            check(parse(photoSource)?.let { it.isCustomContent && it.previewImage !== photo } == true) {
+                "Enabling custom layouts reused the legacy cached card"
+            }
+            settings.customNotificationsEnabled = false
+            check(parse(photoSource)?.let { !it.isCustomContent && it.previewImage === photo } == true) {
+                "Disabling custom layouts did not restore the original attachment"
+            }
+            settings.compactMode = true
+            val compactSource = source(723).apply {
+                notification.contentView = null
+                notification.extras.putParcelable(android.app.Notification.EXTRA_PICTURE, photo)
+            }
+            val compactPhoto = parse(compactSource)!!
+            check(!compactPhoto.isCustomContent && compactPhoto.previewImage == null && compactPhoto.senderImage == null)
+            check(parse(compactSource) == compactPhoto) { "Cached compact photo-only card disappeared" }
+            val compactPlan = WidgetRenderModel.build(listOf(compactPhoto), settings, null, 398, 1000, isolated)
+            check(compactPlan.cards.single().key == compactPhoto.key && compactPlan.overflow == 0)
+            check(WidgetRenderModel.build(listOf(compactPhoto), settings, null, 398, 1, isolated).overflow == 1)
+            check(parse(source(724).apply { notification.contentView = null }) == null) {
+                "Compact mode retained a genuinely empty notification"
+            }
+            val message = android.app.Notification.MessagingStyle.Message("", 1000L, "").apply {
+                setData("image/png", android.net.Uri.parse("content://regression.invalid/hidden-image"))
+            }
+            val messageSource = source(725).apply {
+                notification.contentView = null
+                notification.extras.putParcelableArray(android.app.Notification.EXTRA_MESSAGES,
+                    arrayOf(Bundle().apply {
+                        putCharSequence("text", message.text)
+                        putLong("time", message.timestamp)
+                        putString("type", message.dataMimeType)
+                        putParcelable("uri", message.dataUri)
+                    }))
+            }
+            check(parse(messageSource)?.let { it.previewImage == null && it.text.isEmpty() } == true) {
+                "Compact mode dropped an image message or tried to load its inaccessible URI"
+            }
+            check(CustomNotificationSnapshot.stats.attempts == legacyRenders + 1)
+            settings.compactMode = false
+            check(parse(compactSource)?.previewImage === photo) { "Leaving compact mode did not restore the image" }
+        } finally {
+            queue.cancel()
+            (field("refreshHandler").get(service) as android.os.Handler).removeCallbacksAndMessages(null)
+            field("listenerConnected").setBoolean(service, false)
+            active.set(null, oldService)
+            CardState.publish(oldSnapshot)
+            AodCardsWidgetProvider.renderAll(targetContext)
+            (field("workerThread").get(service) as android.os.HandlerThread).quitSafely()
+            settings.compactMode = false
+            settings.ongoingMode = 0
+            settings.widgetScale = 1
+            settings.customNotificationsEnabled = false
+            settings.customNotificationScale = -1
+        }
+    }
+
+    private fun checkCustomSnapshots() {
+        settings.customNotificationsEnabled = true
+        settings.contentMode = 0
+        settings.compactMode = false
+        settings.ongoingMode = 0
+        // Reproduce a MATCH_PARENT remote canvas with a small row centred vertically.
+        val padded = Bitmap.createBitmap(512, 410, Bitmap.Config.ARGB_8888)
+        Canvas(padded).drawRect(80f, 170f, 430f, 240f,
+            android.graphics.Paint().apply { color = android.graphics.Color.WHITE })
+        val trimmed = CustomNotificationSnapshot.trimPadding(padded)!!
+        check(trimmed.width == 512 && trimmed.height == 72) { "Custom row still contains vertical slack" }
+        check(trimmed.getPixel(80, 1) == android.graphics.Color.WHITE)
+        check(trimmed.getPixel(0, 1) == android.graphics.Color.TRANSPARENT) { "Horizontal layout must be preserved" }
+        check(padded.isRecycled)
+        val empty = Bitmap.createBitmap(20, 20, Bitmap.Config.ARGB_8888)
+        check(CustomNotificationSnapshot.trimPadding(empty) == null && empty.isRecycled)
+        val full = Bitmap.createBitmap(20, 20, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(android.graphics.Color.WHITE)
+        }
+        check(CustomNotificationSnapshot.trimPadding(full) === full && !full.isRecycled)
+        val remote = android.widget.RemoteViews("android", android.R.layout.simple_list_item_1).apply {
+            setTextViewText(android.R.id.text1, "Custom notification")
+            setTextColor(android.R.id.text1, android.graphics.Color.WHITE)
+        }
+        val snapshot = CustomNotificationSnapshot.render(targetContext, remote, "android")
+        check(snapshot != null && snapshot.width <= 1024 && snapshot.allocationByteCount <= 1024 * 1024)
+        val item = card("custom").copy(title = "", text = "", senderName = null,
+            previewImage = snapshot, isCustomContent = true)
+        // Every custom size must retain the same outer width as an ordinary card.
+        for (global in 0..2) for (custom in 0..2) for (width in listOf(180, 398)) for (hide in listOf(false, true)) {
+            settings.widgetScale = global
+            settings.customNotificationScale = custom
+            settings.customHideAppIcon = hide
+            val normal = card("ordinary-width")
+            val root = WidgetRenderer.createViews(isolated, listOf(normal, item), settings, null,
+                WidgetRows.scaleFactor(global), width, 1000).apply(isolated, FrameLayout(isolated))
+            root.measure(View.MeasureSpec.makeMeasureSpec((width * isolated.resources.displayMetrics.density + .5f).toInt(), View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+            root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+            val ordinaryShell = root.findViewById<View>(R.id.card_shell)
+            val customShell = root.findViewById<android.view.ViewGroup>(R.id.widget_notification_container).getChildAt(1).findViewById<View>(R.id.card_shell)
+            check(ordinaryShell.visibility == View.VISIBLE && customShell.visibility == View.VISIBLE)
+            check(ordinaryShell.left == customShell.left && ordinaryShell.right == customShell.right) {
+                "Custom card width differs: widget=$global custom=$custom width=$width hide=$hide"
+            }
+            if (!hide) {
+                val ordinaryIcon = root.findViewById<View>(R.id.avatar_main)
+                val customIcon = root.findViewById<android.view.ViewGroup>(R.id.widget_notification_container).getChildAt(1).findViewById<View>(R.id.avatar_main)
+                fun bounds(view: View) = android.graphics.Rect(0, 0, view.width, view.height).also {
+                    (root as android.view.ViewGroup).offsetDescendantRectToMyCoords(view, it)
+                }
+                val ordinaryBounds = bounds(ordinaryIcon)
+                val customBounds = bounds(customIcon)
+                check(ordinaryBounds.left == customBounds.left && ordinaryBounds.right == customBounds.right &&
+                    ordinaryIcon.height == customIcon.height) {
+                    "App icon columns differ: widget=$global custom=$custom width=$width"
+                }
+            }
+        }
+        settings.customNotificationScale = -1
+        WidgetLayout.clearCache()
+        val originalRenders = CustomNotificationSnapshot.stats.attempts
+        for (size in 0..2) for (width in listOf(180, 398, 600)) {
+            settings.widgetScale = size
+            settings.customHideAppIcon = false
+            fun views(card: NotificationCard = item) = WidgetRenderer.createViews(isolated, listOf(card),
+                settings, null, WidgetRows.scaleFactor(size), width, 1000)
+            val root = views().apply(isolated, FrameLayout(isolated))
+            fun layout() {
+                root.measure(View.MeasureSpec.makeMeasureSpec((width * isolated.resources.displayMetrics.density + .5f).toInt(), View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+            }
+            layout()
+            val avatar = root.findViewById<android.widget.ImageView>(R.id.avatar_main)
+            val frame = root.findViewById<View>(R.id.avatar_container)
+            val image = root.findViewById<android.widget.ImageView>(R.id.card_image)
+            check(frame.visibility == View.VISIBLE && avatar.drawable != null)
+            val shownWidth = image.width
+            val shownKey = WidgetUpdateKey.create(isolated, listOf(item), null, settings, width, 1000, true)
+            val measuredBefore = WidgetLayout.measurementCount
+            settings.customHideAppIcon = true
+            val hiddenKey = WidgetUpdateKey.create(isolated, listOf(item), null, settings, width, 1000, true)
+            check(shownKey != hiddenKey)
+            views().reapply(isolated, root)
+            layout()
+            check(frame.visibility == View.GONE && avatar.drawable == null)
+            check(image.width > shownWidth) { "Hiding the app icon did not release its horizontal space" }
+            check(WidgetLayout.measurementCount > measuredBefore) { "Icon change reused stale row geometry" }
+            val ordinary = item.copy(isCustomContent = false)
+            views(ordinary).reapply(isolated, root)
+            layout()
+            check(frame.visibility == View.VISIBLE) { "Hide app icon affected an ordinary notification" }
+            settings.customHideAppIcon = false
+            views().reapply(isolated, root)
+            layout()
+            check(frame.visibility == View.VISIBLE && avatar.drawable != null)
+        }
+        check(CustomNotificationSnapshot.stats.attempts == originalRenders)
+        // Keep the original full-width content scale and packing matrix as well.
+        settings.customHideAppIcon = true
+        for (width in listOf(180, 398, 600)) {
+            val heights = (0..2).map { size ->
+                settings.widgetScale = size
+                val selected = CustomNotificationSnapshot.render(targetContext, remote, "android", WidgetRows.scaleFactor(size))!!
+                val sizedItem = item.copy(previewImage = selected)
+                val root = WidgetRenderer.createViews(isolated, listOf(sizedItem), settings, null,
+                    WidgetRows.scaleFactor(size), width, 1000).apply(isolated, FrameLayout(isolated))
+                root.measure(View.MeasureSpec.makeMeasureSpec((width * isolated.resources.displayMetrics.density + .5f).toInt(), View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                root.findViewById<View>(R.id.card_image).measuredHeight.also { selected.recycle() }
+            }
+            check(heights[0] < heights[1] && heights[1] < heights[2]) {
+                "Custom content ignores size selector at width=$width: $heights"
+            }
+        }
+        for (mode in 1..2) check(NotificationPrivacy.redact(item, mode).previewImage == null)
+        val density = isolated.resources.displayMetrics.density
+        for (size in 0..2) for (width in listOf(180, 299, 300, 398, 600)) {
+            settings.widgetScale = size
+            val scale = WidgetRows.scaleFactor(size)
+            fun views(card: NotificationCard) = WidgetRenderer.createViews(isolated, listOf(card), settings,
+                null, scale, width, 1000)
+            val root = views(item).apply(isolated, FrameLayout(isolated))
+            fun layout() {
+                root.measure(View.MeasureSpec.makeMeasureSpec((width * density + .5f).toInt(), View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+            }
+            layout()
+            val image = root.findViewById<View>(R.id.card_image)
+            check(image.height <= kotlin.math.ceil(120f * scale * density).toInt())
+            check(root.findViewById<View>(R.id.card_header).visibility == View.GONE)
+            // A normal photo-only card must keep its app identity, and reapply must reset geometry.
+            val ordinary = item.copy(isCustomContent = false)
+            views(ordinary).reapply(isolated, root)
+            layout()
+            check(root.findViewById<View>(R.id.card_header).visibility == View.VISIBLE)
+            check(root.findViewById<View>(R.id.avatar_container).visibility == View.VISIBLE)
+            check(image.height == (64f * scale * density + .5f).toInt())
+            views(item).reapply(isolated, root)
+            layout()
+            val items = List(12) { item.copy(key = "custom-$it") }
+            val height = 220
+            val packed = WidgetRenderer.createViews(isolated, items, settings, null, scale, width, height)
+                .apply(isolated, FrameLayout(isolated))
+            packed.measure(View.MeasureSpec.makeMeasureSpec((width * density + .5f).toInt(), View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+            check(packed.measuredHeight <= (height * density + .5f).toInt()) { "Custom cards clip: $width/$size" }
+        }
+        // Equal heights with different widths must produce distinct measurement cache entries.
+        settings.widgetScale = 1
+        WidgetLayout.clearCache()
+        WidgetRenderModel.build(listOf(item), settings, null, 398, 1000, isolated)
+        val before = WidgetLayout.measurementCount
+        val narrow = Bitmap.createBitmap(40, snapshot.height, Bitmap.Config.ARGB_8888)
+        WidgetRenderModel.build(listOf(item.copy(previewImage = narrow)), settings, null, 398, 1000, isolated)
+        check(WidgetLayout.measurementCount > before)
+        check(CardGrouper.groupOngoing(listOf(item.copy(ongoing = true)))?.text == item.appName)
+        settings.contentMode = 1
+        check(WidgetRenderModel.prepare(listOf(item), settings, null, isolated).first.single().previewImage == null)
+        settings.contentMode = 0
+        settings.compactMode = true
+        check(WidgetRenderModel.prepare(listOf(item), settings, null, isolated).first.single().previewImage == null)
+        settings.compactMode = false
+        settings.customHideAppIcon = false
+    }
+
     private fun checkHeaderWidth() {
         settings.contentMode = 0
         settings.compactMode = false
@@ -1071,10 +1675,10 @@ class RegressionInstrumentation : Instrumentation() {
                 root.measure(View.MeasureSpec.makeMeasureSpec((width * density + .5f).toInt(), View.MeasureSpec.EXACTLY),
                     View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
                 root.layout(0, 0, root.measuredWidth, root.measuredHeight)
-                val name = root.findViewById<TextView>(R.id.app_name_0)
+                val name = root.findViewById<TextView>(R.id.app_name)
                 val parent = name.parent as android.view.ViewGroup
-                val badge = root.findViewById<View>(R.id.card_author_count_0)
-                val time = root.findViewById<TextView>(R.id.card_time_0)
+                val badge = root.findViewById<View>(R.id.card_author_count)
+                val time = root.findViewById<TextView>(R.id.card_time)
                 check(name.right <= time.left) { "Author overlaps time: $width/$size/$fontScale" }
                 check(time.right <= parent.width) { "Time leaves the header: $width/$size/$fontScale" }
                 if (count > 1) check(name.right <= badge.left && badge.right <= time.left) { "Group count overlaps name/time: $width/$size/$fontScale" }
@@ -1083,8 +1687,8 @@ class RegressionInstrumentation : Instrumentation() {
                 if (width == 600 && size == 1 && fontScale == 1f) {
                     check(name.width > 180 * density) { "Author still has the fixed 180dp cap" }
                 }
-                val body = root.findViewById<TextView>(R.id.card_text_0)
-                val column = root.findViewById<View>(R.id.card_content_column_0)
+                val body = root.findViewById<TextView>(R.id.card_text)
+                val column = root.findViewById<View>(R.id.card_content_column)
                 check(body.width == column.width) { "Message body does not fill the text column" }
                 val short = item.copy(senderName = "Buddy ♥", title = "", text = "H\nH")
                 WidgetRenderer.createViews(context, listOf(short), settings, null, WidgetRows.scaleFactor(size), width, 1000).reapply(context, root)
@@ -1165,19 +1769,19 @@ class RegressionInstrumentation : Instrumentation() {
         }
         val normal = views(1).apply(isolated, FrameLayout(isolated))
         layout(normal)
-        val normalFont = normal.findViewById<TextView>(R.id.card_text_0).textSize
-        val normalAvatar = normal.findViewById<View>(R.id.avatar_main_0).width
+        val normalFont = normal.findViewById<TextView>(R.id.card_text).textSize
+        val normalAvatar = normal.findViewById<View>(R.id.avatar_main).width
         val reused = views(1).apply(isolated, FrameLayout(isolated))
-        val dimensions = listOf(R.id.avatar_container_0, R.id.avatar_main_0, R.id.app_icon_badge_frame_0,
-            R.id.card_author_count_0, R.id.card_group_badge_0, R.id.music_art_container, R.id.music_activity,
+        val dimensions = listOf(R.id.avatar_container, R.id.avatar_main, R.id.app_icon_badge_frame,
+            R.id.card_author_count, R.id.card_group_badge, R.id.music_art_container, R.id.music_activity,
             R.id.widget_overflow_center, R.id.widget_overflow_row)
-        val fonts = listOf(R.id.app_name_0, R.id.card_title_0, R.id.card_text_0, R.id.card_time_0,
-            R.id.card_author_count_0, R.id.widget_overflow_center, R.id.music_title, R.id.music_artist)
+        val fonts = listOf(R.id.app_name, R.id.card_title, R.id.card_text, R.id.card_time,
+            R.id.card_author_count, R.id.widget_overflow_center, R.id.music_title, R.id.music_artist)
         for (size in listOf(0, 1, 2, 1, 0, 2, 1)) {
             views(size).reapply(isolated, reused)
             layout(reused)
-            val font = reused.findViewById<TextView>(R.id.card_text_0).textSize
-            val avatar = reused.findViewById<View>(R.id.avatar_main_0).width
+            val font = reused.findViewById<TextView>(R.id.card_text).textSize
+            val avatar = reused.findViewById<View>(R.id.avatar_main).width
             when (size) {
                 0 -> { check(font < normalFont); check(avatar < normalAvatar) }
                 2 -> { check(font > normalFont); check(avatar > normalAvatar) }

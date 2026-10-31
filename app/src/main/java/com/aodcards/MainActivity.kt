@@ -54,6 +54,10 @@ class MainActivity : Activity() {
     private var filterView: AppFilterView? = null
     private var previewWidgetId = -1
     private var lineChoices: ViewGroup? = null
+    private var customScaleChoices: ViewGroup? = null
+    private var customIconControl: View? = null
+    private var originalLayoutHelpDialog: android.app.Dialog? = null
+    private var experimentalExpanded = false
     private val statusLabels = mutableListOf<TextView>()
     private val stateObserver: () -> Unit = {
         updateConnectionStatus()
@@ -78,6 +82,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        experimentalExpanded = savedInstanceState?.getBoolean("experimental_expanded") ?: false
         settings = SettingsRepository(this)
         previewMode = getSharedPreferences("ui", MODE_PRIVATE).getInt("preview_mode", PREVIEW_EXAMPLES)
         updatePreviewSecurity()
@@ -428,6 +433,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         CardState.removeObserver(stateObserver)
+        originalLayoutHelpDialog?.dismiss()
         filterView?.close()
         super.onDestroy()
     }
@@ -510,7 +516,8 @@ class MainActivity : Activity() {
         addSegmentedChoices(sizeCard, getString(R.string.localized_041), scaleOptions.map { (value, label) -> SegmentedChoice(ChoiceGlyph.SCALE, value, label) }, scaleOptions.indexOfFirst { it.first == settings.widgetScale }) {
             settings.widgetScale = scaleOptions[it].first
             renderPreview()
-            updateWidget()
+            // Only the selected custom snapshot is kept; rebuild it for the new size.
+            NotificationListener.forceRefresh(this)
         }
         addSeparator(sizeCard)
         lineChoices = addSegmentedChoices(sizeCard, getString(R.string.localized_042), listOf(SegmentedChoice(ChoiceGlyph.TEXT_LINES, 2, getString(R.string.localized_043)), SegmentedChoice(ChoiceGlyph.TEXT_LINES, 3, getString(R.string.localized_044))), settings.maxTextLines - 2) {
@@ -539,8 +546,9 @@ class MainActivity : Activity() {
         addSeparator(contentCard)
         contentCard.addView(switchRow(getString(R.string.compact_mode), getString(R.string.localized_048), settings.compactMode) {
             settings.compactMode = it
+            updateContentControls()
             renderPreview()
-            updateWidget()
+            NotificationListener.refreshSnapshot(this)
         }, wrap())
         addSeparator(contentCard)
         contentCard.addView(switchRow(getString(R.string.localized_049), getString(R.string.localized_050), settings.musicPillEnabled) {
@@ -574,11 +582,204 @@ class MainActivity : Activity() {
             renderPreview()
             updateWidget()
         }
-        groups.addView(behaviorCard, cardMargins(bottom = 12))
+        groups.addView(behaviorCard, cardMargins(bottom = 8))
+
+        val experimentalContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            tag = "experimental_content"
+        }
+        experimentalContent.addView(settingsGroup(getString(R.string.custom_notifications_title),
+            getString(R.string.custom_notifications_description), ::showOriginalLayoutHelp).apply {
+            tag = "original_notification_layout_heading"
+        })
+        val customCard = surfaceCard(compact = true).apply {
+            tag = "custom_notification_settings"
+            background = rounded(getColor(R.color.ui_nested_surface), dp(20), null)
+        }
+        customCard.addView(switchRow(getString(R.string.custom_notifications_enabled),
+            getString(R.string.custom_notifications_enabled_hint), settings.customNotificationsEnabled) {
+            settings.customNotificationsEnabled = it
+            updateContentControls()
+            renderPreview()
+            NotificationListener.refreshSnapshot(this)
+        }, wrap())
+        addSeparator(customCard)
+        customIconControl = switchRow(getString(R.string.original_layout_hide_icon),
+            getString(R.string.original_layout_hide_icon_hint), settings.customHideAppIcon) {
+            settings.customHideAppIcon = it
+            renderPreview()
+            updateWidget()
+        }.apply { tag = "original_layout_hide_icon" }
+        customCard.addView(customIconControl, wrap())
+        addSeparator(customCard)
+        val customSizes = listOf(-1 to getString(R.string.custom_notifications_scale_default)) + scaleOptions
+        customScaleChoices = addSegmentedChoices(customCard, getString(R.string.custom_notifications_scale),
+            customSizes.map { (value, label) -> SegmentedChoice(ChoiceGlyph.SCALE, if (value < 0) 1 else value, label) },
+            customSizes.indexOfFirst { it.first == settings.customNotificationScale },
+            subtitle = getString(R.string.custom_notifications_scale_hint)) {
+            settings.customNotificationScale = customSizes[it].first
+            renderPreview()
+            NotificationListener.forceRefresh(this)
+        }
+        experimentalContent.addView(customCard, cardMargins(bottom = 0))
+        groups.addView(experimentalSection(experimentalContent), cardMargins(bottom = 12))
         return groups
     }
 
-    private fun settingsGroup(title: String, subtitle: String): View = sectionHeading(title, subtitle)
+    private fun experimentalSection(content: View): View {
+        val section = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            tag = "experimental_settings"
+            background = rounded(SURFACE, dp(28), null)
+            clipToOutline = true
+        }
+        content.setPadding(dp(12), 0, dp(12), dp(12))
+        val divider = View(this).apply { setBackgroundColor(LINE) }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(64)
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            tag = "experimental_header"
+            isFocusable = true
+            contentDescription = getString(R.string.experimental_title)
+            background = RippleDrawable(ColorStateList.valueOf(Color.argb(38, 120, 185, 255)),
+                rounded(SURFACE, dp(28), null), null)
+        }
+        val title = text(getString(R.string.experimental_title), 16f, INK, true).apply {
+            tag = "experimental_title"
+            includeFontPadding = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        val flask = ImageView(this).apply {
+            tag = "experimental_flask"
+            setImageResource(R.drawable.ic_experimental_flask)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        val label = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isBaselineAligned = false
+            addView(title, LinearLayout.LayoutParams(-2, -2))
+            addView(flask, LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginStart = dp(10) })
+        }
+        label.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            val glyphs = android.graphics.Rect()
+            title.paint.getTextBounds(title.text.toString(), 0, title.text.length, glyphs)
+            val textCentre = title.top + title.baseline + glyphs.exactCenterY()
+            flask.translationY = textCentre - (flask.top + flask.height / 2f)
+        }
+        header.addView(label, LinearLayout.LayoutParams(0, -2, 1f))
+        val chevron = ImageView(this).apply {
+            setImageResource(R.drawable.ic_expand_section)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        header.addView(chevron, LinearLayout.LayoutParams(dp(24), dp(24)))
+        fun expand(value: Boolean) {
+            experimentalExpanded = value
+            content.visibility = if (value) View.VISIBLE else View.GONE
+            divider.visibility = content.visibility
+            chevron.rotation = if (value) 180f else 0f
+            header.stateDescription = getString(if (value) R.string.experimental_expanded else R.string.experimental_collapsed)
+        }
+        header.setOnClickListener { expand(!experimentalExpanded) }
+        header.accessibilityDelegate = object : View.AccessibilityDelegate() {
+            override fun onInitializeAccessibilityNodeInfo(host: View, info: android.view.accessibility.AccessibilityNodeInfo) {
+                super.onInitializeAccessibilityNodeInfo(host, info)
+                info.className = "android.widget.Button"
+                info.addAction(if (experimentalExpanded)
+                    android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_COLLAPSE
+                    else android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_EXPAND)
+            }
+            override fun performAccessibilityAction(host: View, action: Int, args: Bundle?): Boolean {
+                if (action == android.view.accessibility.AccessibilityNodeInfo.ACTION_EXPAND) {
+                    expand(true)
+                    return true
+                }
+                if (action == android.view.accessibility.AccessibilityNodeInfo.ACTION_COLLAPSE) {
+                    expand(false)
+                    return true
+                }
+                return super.performAccessibilityAction(host, action, args)
+            }
+        }
+        expand(experimentalExpanded)
+        section.addView(header, wrap())
+        section.addView(divider, LinearLayout.LayoutParams(-1, dp(1)).apply {
+            marginStart = dp(16)
+            marginEnd = dp(16)
+        })
+        section.addView(content, wrap())
+        return section
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("experimental_expanded", experimentalExpanded)
+        super.onSaveInstanceState(outState)
+    }
+
+    private fun showOriginalLayoutHelp() {
+        if (originalLayoutHelpDialog?.isShowing == true) return
+        val dialog = android.app.Dialog(this)
+        originalLayoutHelpDialog = dialog
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(24), dp(24), dp(20))
+            background = rounded(SURFACE, dp(28), null)
+        }
+        content.addView(text(getString(R.string.custom_notifications_title), 21f, INK, true), wrap())
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        // A fictional sample, captured from a notification layout. No personal notification
+        // data is loaded, and opening help never enables the feature or fills its cache.
+        val example = layoutInflater.inflate(R.layout.original_notification_example, FrameLayout(this), false)
+        val sampleWidth = minOf(dp(320), 1024)
+        example.measure(View.MeasureSpec.makeMeasureSpec(sampleWidth, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        example.layout(0, 0, sampleWidth, example.measuredHeight)
+        val bitmap = android.graphics.Bitmap.createBitmap(sampleWidth, example.measuredHeight,
+            android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.BLACK)
+        example.draw(canvas)
+        val image = ImageView(this).apply {
+            tag = "original_layout_help_image"
+            setImageBitmap(bitmap)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            adjustViewBounds = true
+            background = rounded(Color.BLACK, dp(20), null)
+            clipToOutline = true
+            contentDescription = getString(R.string.original_layout_help_example)
+        }
+        body.addView(image, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
+        body.addView(text(getString(R.string.original_layout_help_example), 12f, MUTED), margin(top = 6))
+        listOf(R.string.original_layout_help_intro, R.string.original_layout_help_cost,
+            R.string.original_layout_help_default).forEach { message ->
+            body.addView(text(getString(message), 14f, INK), margin(top = 16))
+        }
+        val scroll = ScrollView(this).apply {
+            isFillViewport = false
+            addView(body)
+        }
+        content.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(4) })
+        content.addView(actionButton(getString(R.string.original_layout_help_close), false) { dialog.dismiss() }.apply {
+            tag = "original_layout_help_close"
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
+        dialog.setContentView(content)
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dialog.setOnDismissListener {
+            image.setImageDrawable(null)
+            originalLayoutHelpDialog = null
+        }
+        dialog.show()
+        val width = minOf(dp(400), resources.displayMetrics.widthPixels - dp(40))
+        val maxHeight = (resources.displayMetrics.heightPixels - dp(96)).coerceAtLeast(dp(120))
+        content.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(maxHeight, View.MeasureSpec.AT_MOST))
+        dialog.window?.setLayout(width, content.measuredHeight)
+    }
+
+    private fun settingsGroup(title: String, subtitle: String, onHelp: (() -> Unit)? = null): View =
+        sectionHeading(title, subtitle, onHelp)
 
 
     private fun lockStarCard(): View {
@@ -738,12 +939,13 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
+        val compactChoices = choices.size > 3
         choices.forEachIndexed { index, choice ->
             val button = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                minimumHeight = dp(48)
-                setPadding(dp(6), dp(4), dp(6), dp(4))
+                orientation = if (compactChoices) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                minimumHeight = dp(if (compactChoices) 64 else 48)
+                setPadding(dp(if (compactChoices) 4 else 6), dp(4), dp(if (compactChoices) 4 else 6), dp(4))
                 isClickable = true
                 isFocusable = true
                 contentDescription = choice.label
@@ -752,9 +954,10 @@ class MainActivity : Activity() {
                 addView(icon, LinearLayout.LayoutParams(dp(22), dp(22)))
                 addView(text(choice.label, 13f, INK).apply {
                     gravity = Gravity.CENTER
-                    maxLines = 2
+                    maxLines = if (compactChoices) 1 else 2
                     ellipsize = android.text.TextUtils.TruncateAt.END
-                }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(5) })
+                }, if (compactChoices) LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) }
+                    else LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(5) })
                 accessibilityDelegate = object : View.AccessibilityDelegate() {
                     override fun onInitializeAccessibilityNodeInfo(host: View, info: android.view.accessibility.AccessibilityNodeInfo) {
                         super.onInitializeAccessibilityNodeInfo(host, info)
@@ -784,6 +987,15 @@ class MainActivity : Activity() {
             group.alpha = if (enabled) 1f else .4f
             for (index in 0 until group.childCount) group.getChildAt(index).isEnabled = enabled
         }
+        listOfNotNull(customScaleChoices, customIconControl).forEach { group ->
+            val enabled = settings.customNotificationsEnabled && settings.contentMode == 0 && !settings.compactMode
+            group.alpha = if (enabled) 1f else .4f
+            fun enable(view: View) {
+                view.isEnabled = enabled
+                if (view is ViewGroup) for (index in 0 until view.childCount) enable(view.getChildAt(index))
+            }
+            enable(group)
+        }
     }
 
     private fun switchRow(title: String, subtitle: String, checked: Boolean, changed: (Boolean) -> Unit): View {
@@ -805,9 +1017,21 @@ class MainActivity : Activity() {
         return row
     }
 
-    private fun sectionHeading(title: String, subtitle: String): View {
+    private fun sectionHeading(title: String, subtitle: String, onHelp: (() -> Unit)? = null): View {
         val group = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(12), 0, dp(10)) }
-        group.addView(text(title, 16f, INK, true), wrap())
+        if (onHelp == null) group.addView(text(title, 16f, INK, true), wrap())
+        else group.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(text(title, 16f, INK, true), LinearLayout.LayoutParams(0, -2, 1f))
+            addView(text("ⓘ", 24f, BLUE).apply {
+                tag = "settings_help"
+                gravity = Gravity.CENTER
+                contentDescription = getString(R.string.setting_help, title)
+                isFocusable = true
+                setOnClickListener { onHelp() }
+            }, LinearLayout.LayoutParams(dp(48), dp(48)))
+        }, wrap())
         group.addView(text(subtitle, 12f, MUTED).apply { setPadding(0, dp(4), 0, 0) }, wrap())
         return group
     }

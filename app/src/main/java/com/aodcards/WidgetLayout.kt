@@ -9,8 +9,8 @@ import android.widget.RemoteViews
 /** Measures the actual widget rows in pixels, including fonts, avatars and margins. */
 object WidgetLayout {
     private data class MeasurementKey(
-        val content: Any, val images: Int, val environment: WidgetEnvironment,
-        val width: Int, val scale: Float, val showText: Boolean, val lines: Int
+        val content: Any, val images: List<Int>, val environment: WidgetEnvironment,
+        val width: Int, val scale: Float, val customScale: Int, val customHideIcon: Boolean, val showText: Boolean, val lines: Int
     )
     // Keys contain text/geometry only. Never retain a View, Context or Bitmap here.
     private val heights = object : android.util.LruCache<MeasurementKey, Int>(256 * 1024) {
@@ -31,8 +31,8 @@ object WidgetLayout {
         val contentWidth = (px(width.toFloat()) - 2 * rootPadding).coerceAtLeast(1)
         val parent by lazy { FrameLayout(context) }
         val environment = WidgetEnvironment.read(context)
-        fun cached(content: Any, images: Int = 0, create: () -> Int): Int {
-            val key = MeasurementKey(content, images, environment, width, scale, settings.showText, settings.maxTextLines)
+        fun cached(content: Any, images: List<Int> = emptyList(), create: () -> Int): Int {
+            val key = MeasurementKey(content, images, environment, width, scale, settings.effectiveCustomNotificationScale, settings.customHideAppIcon, settings.showText, settings.maxTextLines)
             return heights.get(key) ?: create().also { heights.put(key, it) }
         }
         fun measure(view: View): Int {
@@ -43,14 +43,16 @@ object WidgetLayout {
             val margins = view.layoutParams as? ViewGroup.MarginLayoutParams
             return view.measuredHeight + (margins?.topMargin ?: 0) + (margins?.bottomMargin ?: 0)
         }
-        // Reuse one inflated row; all 12 slots use the same layout and dimensions.
+        // Reuse one inflated row; every card uses the same template and dimensions.
         var row: View? = null
         val rowHeights = cards.take(limit).map { card ->
             cached(card.layoutContent(),
-                (if (card.previewImage != null) 1 else 0) + (if (card.senderImage != null) 2 else 0)) {
-                val views = RemoteViews(context.packageName, R.layout.widget_notification_row_0)
-                views.setViewVisibility(R.id.card_shell_0, View.VISIBLE)
-                WidgetRows.apply(context, views, card, WidgetRows.notificationRows.first(), scale, width)
+                listOf(if (card.previewImage != null) 1 else 0, if (card.senderImage != null) 1 else 0,
+                    if (card.isCustomContent) card.previewImage?.width ?: 0 else 0,
+                    if (card.isCustomContent) card.previewImage?.height ?: 0 else 0)) {
+                val views = RemoteViews(context.packageName, R.layout.widget_notification_row)
+                views.setViewVisibility(R.id.card_shell, View.VISIBLE)
+                WidgetRows.apply(context, views, card, WidgetRows.notificationRow, scale, width)
                 if (row == null) row = views.apply(context, parent) else views.reapply(context, row)
                 measure(row!!)
             }

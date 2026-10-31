@@ -1,4 +1,5 @@
 <resources>
+    <color name="ui_nested_surface">#222225</color>
     <color name="ui_background">#000000</color>
     <color name="ui_surface">#171719</color>
     <color name="ui_control">#303034</color>

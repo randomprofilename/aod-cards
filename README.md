@@ -23,6 +23,7 @@ Notification and music cards for Samsung Always On Display.
 - **Designed to feel native** — notification cards styled to match Samsung One UI as closely as possible.
 - **Your layout** — choose how much screen space your widget takes up.
 - **Your content** — show full text, just the sender, or only the app; exclude apps you don’t need.
+- **App-designed notifications** — optionally preserve an app’s notification appearance as a bounded snapshot inside a card. Off by default, preserving standard notification handling; enable it in the collapsible Experimental block at the bottom of the Widget tab, choose a separate size, or open the info dialog for an example and performance tradeoffs. While enabled, hidden details, compact mode, and image limits fall back to the app identity.
 - **Live preview** — adjust the look using your notifications or built-in demo content.
 
 <p align="center">
@@ -77,6 +78,14 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb shell am instrument -w com.aodcards.test/com.aodcards.RegressionInstrumentation
 ```
+
+Inspect runtime cache hits/misses, cached bytes, and custom notification render count/timing:
+
+```sh
+adb shell dumpsys activity service com.aodcards/.NotificationListener
+```
+
+Counters are cumulative for the current process and contain no notification text. Custom snapshots are reused across screen and ranking events when the source, size, and permitted detail level are unchanged.
 
 Visual checks require a visible app window. Actual AOD behavior and battery usage need separate testing on a Samsung device.
 

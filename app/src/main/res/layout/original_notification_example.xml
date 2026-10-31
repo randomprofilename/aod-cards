@@ -1,0 +1,32 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:padding="16dp"
+    android:background="@drawable/card_surface">
+    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+        android:layout_weight="1" android:orientation="vertical">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="@string/original_layout_demo_weather" android:textSize="12sp"
+            android:textColor="#FFABABB2" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:gravity="center_vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="@string/original_layout_demo_sun" android:textSize="27sp"
+                android:textColor="#FFFFD064" android:importantForAccessibility="no" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginStart="8dp" android:text="@string/original_layout_demo_temperature"
+                android:textSize="30sp" android:textColor="#FFFAFAFC" />
+        </LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_marginStart="12dp" android:orientation="vertical" android:gravity="end">
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="@string/original_layout_demo_range" android:textSize="18sp"
+            android:textColor="#FFFAFAFC" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="@string/original_layout_demo_sky" android:textSize="12sp"
+            android:textColor="#FFABABB2" />
+    </LinearLayout>
+</LinearLayout>

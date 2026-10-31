@@ -1,4 +1,27 @@
 <resources>
+    <string name="experimental_title">Experimental</string>
+    <string name="experimental_expanded">Expanded</string>
+    <string name="experimental_collapsed">Collapsed</string>
+    <string name="original_layout_hide_icon">Hide app icon</string>
+    <string name="original_layout_hide_icon_hint">Show only the original layout, without the app icon added by AOD Cards.</string>
+    <string name="setting_help">About %1$s</string>
+    <string name="original_layout_help_intro">Some apps provide their own notification layouts. We try to reproduce that appearance on your AOD. The result may differ from the original.</string>
+    <string name="original_layout_help_cost">Creating or refreshing the image takes extra processing time and memory. Frequent notification updates may increase battery use.</string>
+    <string name="original_layout_help_default">Off by default. Requires full content and images to be enabled. Your notification privacy settings still apply.</string>
+    <string name="original_layout_help_example">Illustrative weather notification</string>
+    <string name="original_layout_help_close">Got it</string>
+    <string name="original_layout_demo_weather" translatable="false">Weather</string>
+    <string name="original_layout_demo_temperature" translatable="false">18°</string>
+    <string name="original_layout_demo_range" translatable="false">22° / 16°</string>
+    <string name="original_layout_demo_sky" translatable="false">Clear skies</string>
+    <string name="original_layout_demo_sun" translatable="false">☀</string>
+    <string name="custom_notifications_title">App-designed notifications</string>
+    <string name="custom_notifications_description">Keep the appearance provided by the app.</string>
+    <string name="custom_notifications_enabled">Use app-designed layout</string>
+    <string name="custom_notifications_enabled_hint">Try to show the original appearance instead of a standard app card.</string>
+    <string name="custom_notifications_scale">Layout size</string>
+    <string name="custom_notifications_scale_hint">Default follows the main widget size.</string>
+    <string name="custom_notifications_scale_default">Default</string>
     <string name="open_lockstar">Open LockStar</string>
     <string name="open_lockstar_from_goodlock">Open LockStar in Good Lock, then add the widget to Always On Display.</string>
     <string name="lockstar_unavailable">Install Good Lock and LockStar to add the widget to Always On Display.</string>

@@ -38,7 +38,7 @@ object WidgetRenderer {
         // Distinct IDs replace the host tree when disabling taps, removing both
         // the old PendingIntent and View's clickable flag without remote reflection.
         val views = RemoteViews(context.packageName,
-            if (unlockOnTap) R.layout.widget_cards_tap_unlock else R.layout.widget_cards_passive)
+            if (unlockOnTap) R.layout.widget_cards_dynamic_tap_unlock else R.layout.widget_cards_dynamic_passive)
         // The entire live widget, including gaps and hidden content, is a tap target.
         // In-app previews must never request an unlock.
         if (unlockOnTap) views.setOnClickPendingIntent(R.id.widget_root, UnlockActivity.pendingIntent(context))
@@ -49,15 +49,13 @@ object WidgetRenderer {
         views.setViewVisibility(R.id.widget_content, if (hideContent) android.view.View.INVISIBLE else android.view.View.VISIBLE)
         WidgetRows.applyRootScale(context, views, scale)
         val orderedCards = if (hideContent) emptyList() else plan.cards
-        WidgetRows.notificationRows.forEachIndexed { index, ids ->
-            views.setViewVisibility(ids.shell, if (index < orderedCards.size) android.view.View.VISIBLE else android.view.View.GONE)
-            if (index < orderedCards.size) {
-                WidgetRows.apply(context, views, orderedCards[index], ids, scale, width)
-            } else {
-                // This badge is a sibling of the shell, so hiding the shell alone
-                // leaves a stale badge and an occupied row when views are reapplied.
-                WidgetRows.clear(views, ids)
-            }
+        views.removeAllViews(R.id.widget_notification_container)
+        orderedCards.forEachIndexed { index, card ->
+            val row = RemoteViews(context.packageName, R.layout.widget_notification_row)
+            row.setViewVisibility(WidgetRows.notificationRow.shell, android.view.View.VISIBLE)
+            WidgetRows.apply(context, row, card, WidgetRows.notificationRow, scale, width)
+            // Reuse positions without hashing notification keys. Each row fully binds its state.
+            views.addStableView(R.id.widget_notification_container, row, index)
         }
         WidgetRows.applyMusic(context, views, if (hideContent) null else plan.music, scale)
         val overflow = if (hideContent) 0 else plan.overflow

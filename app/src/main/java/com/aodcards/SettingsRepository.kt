@@ -38,6 +38,18 @@ class SettingsRepository(context: Context) {
             return stored.coerceIn(0, 2)
         }
         set(value) { prefs.edit().putInt("widget_scale", value.coerceIn(0, 2)).apply() }
+    var customNotificationsEnabled: Boolean
+        get() = prefs.getBoolean("custom_notifications_enabled", false)
+        set(value) { prefs.edit().putBoolean("custom_notifications_enabled", value).apply() }
+    var customHideAppIcon: Boolean
+        get() = prefs.getBoolean("custom_hide_app_icon", false)
+        set(value) { prefs.edit().putBoolean("custom_hide_app_icon", value).apply() }
+    // -1 follows the main size selector; overrides use the same 0..2 choices.
+    var customNotificationScale: Int
+        get() = prefs.getInt("custom_notification_scale", -1).coerceIn(-1, 2)
+        set(value) { prefs.edit().putInt("custom_notification_scale", value.coerceIn(-1, 2)).apply() }
+    val effectiveCustomNotificationScale: Int
+        get() = customNotificationScale.takeIf { it >= 0 } ?: widgetScale
     var maxTextLines: Int
         get() = prefs.getInt("max_text_lines", 2).coerceIn(2, 3)
         set(value) { prefs.edit().putInt("max_text_lines", value.coerceIn(2, 3)).apply() }

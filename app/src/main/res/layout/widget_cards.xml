@@ -13,18 +13,11 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical">
-        <include layout="@layout/widget_notification_row_0" />
-        <include layout="@layout/widget_notification_row_1" />
-        <include layout="@layout/widget_notification_row_2" />
-        <include layout="@layout/widget_notification_row_3" />
-        <include layout="@layout/widget_notification_row_4" />
-        <include layout="@layout/widget_notification_row_5" />
-        <include layout="@layout/widget_notification_row_6" />
-        <include layout="@layout/widget_notification_row_7" />
-        <include layout="@layout/widget_notification_row_8" />
-        <include layout="@layout/widget_notification_row_9" />
-        <include layout="@layout/widget_notification_row_10" />
-        <include layout="@layout/widget_notification_row_11" />
+        <LinearLayout
+            android:id="@+id/widget_notification_container"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
         <LinearLayout
             android:id="@+id/widget_music_container"
             android:layout_width="match_parent"

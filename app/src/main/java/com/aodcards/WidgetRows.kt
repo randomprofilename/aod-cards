@@ -19,20 +19,7 @@ object WidgetRows {
     private val icons = android.util.LruCache<String, Bitmap>(64)
     const val MAX_VISIBLE_CARDS = 12
     fun scaleFactor(size: Int): Float = when (size.coerceIn(0, 2)) { 0 -> .85f; 2 -> 1.15f; else -> 1f }
-    val notificationRows = listOf(
-        WidgetRowIds(R.id.card_shell_0,R.id.card_content_column_0,R.id.card_header_0,R.id.card_group_badge_0,R.id.card_author_count_0,R.id.avatar_container_0,R.id.avatar_main_0,R.id.app_icon_badge_frame_0,R.id.app_icon_badge_0,R.id.app_name_0,R.id.card_time_0,R.id.card_title_0,R.id.card_text_0,R.id.card_image_0,R.id.card_group_thumbnail_0,R.id.card_group_count_right_0),
-        WidgetRowIds(R.id.card_shell_1,R.id.card_content_column_1,R.id.card_header_1,R.id.card_group_badge_1,R.id.card_author_count_1,R.id.avatar_container_1,R.id.avatar_main_1,R.id.app_icon_badge_frame_1,R.id.app_icon_badge_1,R.id.app_name_1,R.id.card_time_1,R.id.card_title_1,R.id.card_text_1,R.id.card_image_1,R.id.card_group_thumbnail_1,R.id.card_group_count_right_1),
-        WidgetRowIds(R.id.card_shell_2,R.id.card_content_column_2,R.id.card_header_2,R.id.card_group_badge_2,R.id.card_author_count_2,R.id.avatar_container_2,R.id.avatar_main_2,R.id.app_icon_badge_frame_2,R.id.app_icon_badge_2,R.id.app_name_2,R.id.card_time_2,R.id.card_title_2,R.id.card_text_2,R.id.card_image_2,R.id.card_group_thumbnail_2,R.id.card_group_count_right_2),
-        WidgetRowIds(R.id.card_shell_3,R.id.card_content_column_3,R.id.card_header_3,R.id.card_group_badge_3,R.id.card_author_count_3,R.id.avatar_container_3,R.id.avatar_main_3,R.id.app_icon_badge_frame_3,R.id.app_icon_badge_3,R.id.app_name_3,R.id.card_time_3,R.id.card_title_3,R.id.card_text_3,R.id.card_image_3,R.id.card_group_thumbnail_3,R.id.card_group_count_right_3),
-        WidgetRowIds(R.id.card_shell_4,R.id.card_content_column_4,R.id.card_header_4,R.id.card_group_badge_4,R.id.card_author_count_4,R.id.avatar_container_4,R.id.avatar_main_4,R.id.app_icon_badge_frame_4,R.id.app_icon_badge_4,R.id.app_name_4,R.id.card_time_4,R.id.card_title_4,R.id.card_text_4,R.id.card_image_4,R.id.card_group_thumbnail_4,R.id.card_group_count_right_4),
-        WidgetRowIds(R.id.card_shell_5,R.id.card_content_column_5,R.id.card_header_5,R.id.card_group_badge_5,R.id.card_author_count_5,R.id.avatar_container_5,R.id.avatar_main_5,R.id.app_icon_badge_frame_5,R.id.app_icon_badge_5,R.id.app_name_5,R.id.card_time_5,R.id.card_title_5,R.id.card_text_5,R.id.card_image_5,R.id.card_group_thumbnail_5,R.id.card_group_count_right_5),
-        WidgetRowIds(R.id.card_shell_6,R.id.card_content_column_6,R.id.card_header_6,R.id.card_group_badge_6,R.id.card_author_count_6,R.id.avatar_container_6,R.id.avatar_main_6,R.id.app_icon_badge_frame_6,R.id.app_icon_badge_6,R.id.app_name_6,R.id.card_time_6,R.id.card_title_6,R.id.card_text_6,R.id.card_image_6,R.id.card_group_thumbnail_6,R.id.card_group_count_right_6),
-        WidgetRowIds(R.id.card_shell_7,R.id.card_content_column_7,R.id.card_header_7,R.id.card_group_badge_7,R.id.card_author_count_7,R.id.avatar_container_7,R.id.avatar_main_7,R.id.app_icon_badge_frame_7,R.id.app_icon_badge_7,R.id.app_name_7,R.id.card_time_7,R.id.card_title_7,R.id.card_text_7,R.id.card_image_7,R.id.card_group_thumbnail_7,R.id.card_group_count_right_7),
-        WidgetRowIds(R.id.card_shell_8,R.id.card_content_column_8,R.id.card_header_8,R.id.card_group_badge_8,R.id.card_author_count_8,R.id.avatar_container_8,R.id.avatar_main_8,R.id.app_icon_badge_frame_8,R.id.app_icon_badge_8,R.id.app_name_8,R.id.card_time_8,R.id.card_title_8,R.id.card_text_8,R.id.card_image_8,R.id.card_group_thumbnail_8,R.id.card_group_count_right_8),
-        WidgetRowIds(R.id.card_shell_9,R.id.card_content_column_9,R.id.card_header_9,R.id.card_group_badge_9,R.id.card_author_count_9,R.id.avatar_container_9,R.id.avatar_main_9,R.id.app_icon_badge_frame_9,R.id.app_icon_badge_9,R.id.app_name_9,R.id.card_time_9,R.id.card_title_9,R.id.card_text_9,R.id.card_image_9,R.id.card_group_thumbnail_9,R.id.card_group_count_right_9),
-        WidgetRowIds(R.id.card_shell_10,R.id.card_content_column_10,R.id.card_header_10,R.id.card_group_badge_10,R.id.card_author_count_10,R.id.avatar_container_10,R.id.avatar_main_10,R.id.app_icon_badge_frame_10,R.id.app_icon_badge_10,R.id.app_name_10,R.id.card_time_10,R.id.card_title_10,R.id.card_text_10,R.id.card_image_10,R.id.card_group_thumbnail_10,R.id.card_group_count_right_10),
-        WidgetRowIds(R.id.card_shell_11,R.id.card_content_column_11,R.id.card_header_11,R.id.card_group_badge_11,R.id.card_author_count_11,R.id.avatar_container_11,R.id.avatar_main_11,R.id.app_icon_badge_frame_11,R.id.app_icon_badge_11,R.id.app_name_11,R.id.card_time_11,R.id.card_title_11,R.id.card_text_11,R.id.card_image_11,R.id.card_group_thumbnail_11,R.id.card_group_count_right_11)
-    )
+    val notificationRow = WidgetRowIds(R.id.card_shell,R.id.card_content_column,R.id.card_header,R.id.card_group_badge,R.id.card_author_count,R.id.avatar_container,R.id.avatar_main,R.id.app_icon_badge_frame,R.id.app_icon_badge,R.id.app_name,R.id.card_time,R.id.card_title,R.id.card_text,R.id.card_image,R.id.card_group_thumbnail,R.id.card_group_count_right)
     private fun musicSubtitle(context: Context, track: MusicTrack) = if (track.paused) {
         context.getString(R.string.music_paused) + if (track.artist.isNotBlank()) " · ${track.artist}" else ""
     } else track.artist.ifBlank { context.getString(R.string.music_playing) }
@@ -61,9 +48,16 @@ object WidgetRows {
     }
 
     fun apply(context: Context, views: RemoteViews, card: NotificationCard, ids: WidgetRowIds, scale: Float = 1f, widthDp: Int = 360) {
-        val prefs = SettingsRepository(context)
+        applyRow(context, views, card, ids, scale, widthDp, SettingsRepository(context))
+    }
+
+    private fun applyRow(context: Context, views: RemoteViews, card: NotificationCard, ids: WidgetRowIds,
+        widgetScale: Float, widthDp: Int, prefs: SettingsRepository) {
+        val scale = if (card.isCustomContent && card.previewImage != null && prefs.customNotificationsEnabled)
+            scaleFactor(prefs.effectiveCustomNotificationScale) else widgetScale
         val appIcon = icons.get(card.packageName) ?: runCatching { drawableToBitmap(runCatching { context.packageManager.getApplicationIcon(card.packageName) }.getOrElse { context.packageManager.defaultActivityIcon }) }.getOrNull()?.also { icons.put(card.packageName, it) }
         val isGrouped = card.isCollapsedGroup && !card.isOngoingGroup
+        val hideAppIcon = card.isCustomContent && card.previewImage != null && prefs.customHideAppIcon
         if (card.senderImage != null && !isGrouped) {
             setImage(views, ids.avatar, card.senderImage)
             views.setViewVisibility(ids.badgeFrame, android.view.View.VISIBLE)
@@ -105,10 +99,12 @@ object WidgetRows {
         // Allow larger counts to expand so they remain readable.
         val widestDigit = ('0'..'9').maxOf { countPaint.measureText(it.toString()) }
         val countWidth = kotlin.math.ceil(maxOf(widestDigit * 3, countPaint.measureText(card.groupCount.toString())) + 4f * scale * metrics.density)
-        val countReserve = if (isGrouped) (31f + if (thumbnail != null) 44f else 0f) * scale * metrics.density + countWidth
+        val countReserve = if (isGrouped) (8f + if (thumbnail != null) 44f else 0f) * scale * metrics.density + countWidth
             else if (card.groupCount > 1 && !card.isOngoingGroup) inlineBadgeWidth + 6f * scale * metrics.density else 0f
         val compact = widthDp < 300
-        val reservedDp = (4f + (if (compact) 20f else 56f) + 46f + (if (compact) 9f else 14f) + if (time.isEmpty()) 0f else 5f) * scale
+        val reservedDp = (4f + if (compact) 20f else 56f) * widgetScale +
+            (if (hideAppIcon) 0f else 46f + if (compact) 9f else 14f) * widgetScale +
+            if (time.isEmpty()) 0f else 5f * scale
         val nameWidth = (widthDp * metrics.density - reservedDp * metrics.density - countReserve - timePaint.measureText(time)).toInt() - 4
         views.setInt(ids.sender, "setMaxWidth", nameWidth.coerceAtLeast(1))
         views.setViewVisibility(ids.header, if (card.isOngoingGroup) android.view.View.GONE else android.view.View.VISIBLE)
@@ -117,7 +113,7 @@ object WidgetRows {
         val showInlineCount = card.groupCount > 1 && !card.isOngoingGroup && !isGrouped
         views.setTextViewText(ids.inlineGroupBadge, if (showInlineCount) card.groupCount.toString() else "")
         views.setViewVisibility(ids.inlineGroupBadge, if (showInlineCount) android.view.View.VISIBLE else android.view.View.GONE)
-        views.setViewVisibility(ids.avatarFrame, if (card.isOngoingGroup) android.view.View.GONE else android.view.View.VISIBLE)
+        views.setViewVisibility(ids.avatarFrame, if (card.isOngoingGroup || hideAppIcon) android.view.View.GONE else android.view.View.VISIBLE)
         views.setTextViewText(ids.title, card.title)
         views.setViewVisibility(ids.title, if (card.title.isNotBlank() && !card.isOngoingGroup) android.view.View.VISIBLE else android.view.View.GONE)
         val bodyVisible = (prefs.showText || card.ongoing) && card.text.isNotBlank()
@@ -134,8 +130,40 @@ object WidgetRows {
         views.setViewVisibility(ids.image, if (card.previewImage != null) android.view.View.VISIBLE else android.view.View.GONE)
         setImage(views, ids.image, card.previewImage)
         views.setInt(ids.text, "setMaxLines", prefs.maxTextLines)
-        views.setInt(ids.shell, "setBackgroundResource", surfaceForScale(scale))
-        applyCardScale(context, views, ids, scale, compact)
+        views.setInt(ids.shell, "setBackgroundResource", surfaceForScale(widgetScale))
+        applyCardScale(context, views, ids, scale, compact, widgetScale)
+        // The shared widget style owns the outer geometry; custom size only affects content.
+        views.setViewLayoutMargin(ids.shell, RemoteViews.MARGIN_START,
+            (if (compact) 0f else 14f) * widgetScale, TypedValue.COMPLEX_UNIT_DIP)
+        views.setViewLayoutMargin(ids.shell, RemoteViews.MARGIN_END,
+            (if (compact) 0f else 14f) * widgetScale, TypedValue.COMPLEX_UNIT_DIP)
+        views.setViewLayoutMargin(ids.shell, RemoteViews.MARGIN_BOTTOM, 8f * widgetScale, TypedValue.COMPLEX_UNIT_DIP)
+        if (hideAppIcon) views.setViewLayoutMargin(ids.contentColumn, RemoteViews.MARGIN_START, 0f, TypedValue.COMPLEX_UNIT_PX)
+        if (card.isCustomContent && card.previewImage != null && !card.isOngoingGroup && !isGrouped) {
+            views.setViewVisibility(ids.avatarFrame, if (hideAppIcon) android.view.View.GONE else android.view.View.VISIBLE)
+            setImage(views, ids.avatar, if (hideAppIcon) null else appIcon)
+            setImage(views, ids.badgeIcon, null)
+            views.setViewVisibility(ids.header, android.view.View.GONE)
+            views.setViewVisibility(ids.badgeFrame, android.view.View.GONE)
+            val density = metrics.density
+            fun px(value: Float) = (value * scale * density + .5f).toInt()
+            fun sharedPx(value: Float) = (value * widgetScale * density + .5f).toInt()
+            val horizontalPad = if (hideAppIcon) px(18f) else sharedPx(if (compact) 10f else 14f)
+            views.setViewPadding(ids.shell, horizontalPad, px(12f), horizontalPad, px(12f))
+            // Width is already the host's final width; only insets scale with the style.
+            // Match the rounded pixel arithmetic used by the actual RemoteViews tree.
+            val rootPadding = (2f * widgetScale * density + .5f).toInt()
+            val iconGap = if (hideAppIcon) 0 else sharedPx(if (compact) 9f else 14f)
+            val iconReserve = if (hideAppIcon) 0 else sharedPx(46f) + iconGap
+            val innerPx = ((widthDp * density + .5f).toInt() - 2 * rootPadding -
+                2 * ((if (compact) 0f else 14f) * widgetScale * density + .5f).toInt() - 2 * horizontalPad - iconReserve).coerceAtLeast(1)
+            val image = card.previewImage
+            val heightPx = minOf(innerPx * image.height.toFloat() / image.width,
+                120f * scale * density)
+            views.setViewLayoutMargin(ids.contentColumn, RemoteViews.MARGIN_START, iconGap.toFloat(), TypedValue.COMPLEX_UNIT_PX)
+            views.setViewLayoutMargin(ids.image, RemoteViews.MARGIN_TOP, 0f, TypedValue.COMPLEX_UNIT_PX)
+            views.setViewLayoutHeight(ids.image, kotlin.math.ceil(heightPx).toFloat(), TypedValue.COMPLEX_UNIT_PX)
+        }
         views.setViewLayoutWidth(ids.groupCountRight, countWidth, TypedValue.COMPLEX_UNIT_PX)
         views.setViewLayoutWidth(ids.inlineGroupBadge, kotlin.math.ceil(inlineBadgeWidth).toFloat(), TypedValue.COMPLEX_UNIT_PX)
         views.setViewLayoutWidth(ids.groupBadge, kotlin.math.ceil(groupBadgeWidth).toFloat(), TypedValue.COMPLEX_UNIT_PX)
@@ -154,15 +182,6 @@ object WidgetRows {
             .build()
         if (layout.lineCount <= maxLines) return text
         return text.substring(layout.getLineStart(layout.lineCount - maxLines)).trimStart('\n', '\r')
-    }
-
-    fun clear(views: RemoteViews, ids: WidgetRowIds) {
-        listOf(ids.avatar, ids.badgeIcon, ids.image, ids.groupThumbnail).forEach {
-            setImage(views, it, null)
-        }
-        listOf(ids.sender, ids.time, ids.title, ids.text, ids.groupBadge,
-            ids.inlineGroupBadge, ids.groupCountRight).forEach { views.setTextViewText(it, "") }
-        views.setViewVisibility(ids.groupBadge, android.view.View.GONE)
     }
 
     fun applyRootScale(context: Context, views: RemoteViews, scale: Float) {
@@ -197,32 +216,34 @@ object WidgetRows {
         else -> R.drawable.card_surface
     }
 
-    private fun applyCardScale(context: Context, views: RemoteViews, ids: WidgetRowIds, scale: Float, compact: Boolean) {
+    private fun applyCardScale(context: Context, views: RemoteViews, ids: WidgetRowIds, scale: Float, compact: Boolean, widgetScale: Float) {
         val density = context.resources.displayMetrics.density
         fun px(value: Float) = (value * scale * density + .5f).toInt()
-        fun size(id: Int, width: Float? = null, height: Float? = null) {
+        fun size(id: Int, width: Float? = null, height: Float? = null, itemScale: Float = scale) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-            width?.let { views.setViewLayoutWidth(id, it * scale, TypedValue.COMPLEX_UNIT_DIP) }
-            height?.let { views.setViewLayoutHeight(id, it * scale, TypedValue.COMPLEX_UNIT_DIP) }
+            width?.let { views.setViewLayoutWidth(id, it * itemScale, TypedValue.COMPLEX_UNIT_DIP) }
+            height?.let { views.setViewLayoutHeight(id, it * itemScale, TypedValue.COMPLEX_UNIT_DIP) }
         }
         fun margin(id: Int, side: Int, value: Float) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) views.setViewLayoutMargin(id, side, value * scale, TypedValue.COMPLEX_UNIT_DIP)
         }
         fun textSize(id: Int, value: Float) = views.setTextViewTextSize(id, TypedValue.COMPLEX_UNIT_SP, value * scale)
 
-        views.setViewPadding(ids.shell, px(if (compact) 10f else 14f), px(8f), px(if (compact) 10f else 14f), px(8f))
+        val horizontalPad = ((if (compact) 10f else 14f) * widgetScale * density + .5f).toInt()
+        views.setViewPadding(ids.shell, horizontalPad, px(8f), horizontalPad, px(8f))
         views.setInt(ids.shell, "setMinimumHeight", px(48f))
         margin(ids.shell, RemoteViews.MARGIN_BOTTOM, 8f)
         margin(ids.shell, RemoteViews.MARGIN_START, if (compact) 0f else 14f)
         margin(ids.shell, RemoteViews.MARGIN_END, if (compact) 0f else 14f)
-        size(ids.avatarFrame, 46f, 46f); size(ids.avatar, 44f, 44f); size(ids.badgeFrame, 22f, 22f)
+        size(ids.avatarFrame, 46f, 46f, widgetScale); size(ids.avatar, 44f, 44f, widgetScale); size(ids.badgeFrame, 22f, 22f, widgetScale)
         size(ids.groupThumbnail, 36f, 36f); margin(ids.groupThumbnail, RemoteViews.MARGIN_START, 8f)
-        textSize(ids.groupCountRight, 14f); margin(ids.groupCountRight, RemoteViews.MARGIN_START, 16f)
-        margin(ids.groupCountRight, RemoteViews.MARGIN_END, 15f)
+        textSize(ids.groupCountRight, 14f); margin(ids.groupCountRight, RemoteViews.MARGIN_START, 8f)
+        margin(ids.groupCountRight, RemoteViews.MARGIN_END, 0f)
         // Clear the old white frame when a host reapplies views from an earlier build.
         views.setInt(ids.badgeFrame, "setBackgroundColor", android.graphics.Color.TRANSPARENT)
         views.setViewPadding(ids.badgeFrame, 0, 0, 0, 0)
-        margin(ids.contentColumn, RemoteViews.MARGIN_START, if (compact) 9f else 14f)
+        views.setViewLayoutMargin(ids.contentColumn, RemoteViews.MARGIN_START,
+            (if (compact) 9f else 14f) * widgetScale, TypedValue.COMPLEX_UNIT_DIP)
         textSize(ids.sender, 15f); textSize(ids.time, 11f); textSize(ids.title, 13f); textSize(ids.text, 13f)
         margin(ids.time, RemoteViews.MARGIN_START, 5f)
         margin(ids.title, RemoteViews.MARGIN_TOP, 1f)

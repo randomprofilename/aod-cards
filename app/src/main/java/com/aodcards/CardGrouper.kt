@@ -75,6 +75,7 @@ object CardGrouper {
         val newest = sorted.first()
         fun detail(card: NotificationCard) = card.title.takeIf { it.isNotBlank() }
             ?: card.text.lineSequence().firstOrNull()?.trim()?.takeIf { it.isNotBlank() }
+            ?: card.appName.takeIf { card.isCustomContent }
         val summaries = sorted.mapNotNull(::detail).distinct()
         return newest.copy(
             appName = "",

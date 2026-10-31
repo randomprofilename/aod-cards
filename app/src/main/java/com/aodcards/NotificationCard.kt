@@ -22,5 +22,6 @@ data class NotificationCard(
     val isConversation: Boolean = false,
     val displayTime: Long? = postTime,
     val lockscreenVisibility: Int = android.app.Notification.VISIBILITY_PRIVATE,
+    val isCustomContent: Boolean = false,
     val lockscreenVisibilityOverride: Int = android.service.notification.NotificationListenerService.Ranking.VISIBILITY_NO_OVERRIDE
 )

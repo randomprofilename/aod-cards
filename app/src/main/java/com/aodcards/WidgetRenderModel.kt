@@ -28,7 +28,8 @@ data class WidgetRenderModel(
                         isOngoingGroup = false,
                         appName = if (card.isOngoingGroup) context.getString(R.string.localized_001) else card.appName)
                     else -> card
-                }.let { if (settings.compactMode) it.copy(senderImage = null, previewImage = null) else it }.let { safe ->
+                }.let { if (settings.compactMode) it.copy(senderImage = null, previewImage = null) else it }
+                    .let { if (it.isCustomContent && !settings.customNotificationsEnabled) it.copy(previewImage = null) else it }.let { safe ->
                     val bytes = (safe.previewImage?.allocationByteCount ?: 0) + (safe.senderImage?.allocationByteCount ?: 0)
                     if (imageBytes + bytes > 2 * 1024 * 1024) safe.copy(previewImage = null, senderImage = null)
                     else safe.also { imageBytes += bytes }

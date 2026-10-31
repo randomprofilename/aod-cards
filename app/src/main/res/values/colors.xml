@@ -1,4 +1,5 @@
 <resources>
+    <color name="ui_nested_surface">#F5F5F8</color>
     <color name="ic_launcher_background">#030B24</color>
     <color name="ui_background">#F2F2F5</color>
     <color name="ui_surface">#FFFFFF</color>

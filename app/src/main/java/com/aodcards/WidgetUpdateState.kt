@@ -7,13 +7,15 @@ import android.graphics.Bitmap
 internal data class WidgetStyle(
     val contentMode: Int, val compact: Boolean, val scale: Int, val lines: Int,
     val ongoing: Int, val music: Boolean, val showWhenScreenOn: Boolean,
-    val overflowPosition: Int, val blocked: Set<String>, val tapToUnlock: Boolean
+    val overflowPosition: Int, val blocked: Set<String>, val tapToUnlock: Boolean,
+    val customNotifications: Boolean, val customScale: Int, val customHideIcon: Boolean
 ) {
     companion object {
         fun read(settings: SettingsRepository) = WidgetStyle(settings.contentMode,
             settings.compactMode, settings.widgetScale, settings.maxTextLines,
             settings.ongoingMode, settings.musicPillEnabled, settings.showWhenScreenOn,
-            settings.overflowBadgePosition, settings.blockedPackages, settings.tapToUnlockEnabled)
+            settings.overflowBadgePosition, settings.blockedPackages, settings.tapToUnlockEnabled,
+            settings.customNotificationsEnabled, settings.customNotificationScale, settings.customHideAppIcon)
     }
 }
 
