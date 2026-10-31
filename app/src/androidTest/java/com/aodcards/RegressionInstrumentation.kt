@@ -962,8 +962,8 @@ class RegressionInstrumentation : Instrumentation() {
             item.copy(systemGroupKey = "conversation$index")
         }, 1).size == 2)
         val bundled = "system:instagram:auto-group"
-        val aKey = NotificationGrouping.groupKey(true, "thread-a", bundled, true)
-        val bKey = NotificationGrouping.groupKey(true, "thread-b", bundled, true)
+        val aKey = NotificationGrouping.groupKey(true, "shortcut-a", bundled, true)
+        val bKey = NotificationGrouping.groupKey(true, "shortcut-b", bundled, true)
         check(aKey != bKey)
         check(NotificationGrouping.groupKey(true, null, bundled, true) == null)
         val chats = listOf(card("chat-a"), card("chat-b")).mapIndexed { index, item ->
@@ -1059,6 +1059,15 @@ class RegressionInstrumentation : Instrumentation() {
         check(root.findViewById<TextView>(R.id.app_name).text.toString() == "Same name")
         check(root.findViewById<View>(R.id.music_pill).visibility == View.GONE)
         settings.contentMode = 2
+        val appOnly = WidgetRenderModel.prepare(listOf(
+            card("chat-one").copy(packageName = "chat.app", groupCount = 3, isConversation = true),
+            card("chat-two").copy(packageName = "chat.app", groupCount = 2, isConversation = true),
+            card("other-app").copy(packageName = "other.app", groupCount = 4, isCollapsedGroup = true)
+        ), settings, null, isolated).first
+        check(appOnly.size == 2 && appOnly.map { it.packageName }.toSet().size == 2)
+        check(appOnly.all { it.groupCount == 1 && !it.isCollapsedGroup && it.senderName == null && it.text.isEmpty() })
+        views(appOnly.take(1)).reapply(isolated, root)
+        check(root.findViewById<View>(R.id.card_author_count).visibility == View.GONE)
         views(cards.take(1)).reapply(isolated, root)
         check(root.findViewById<TextView>(R.id.app_name).text.toString() == "App")
         settings.contentMode = 0
@@ -1189,6 +1198,14 @@ class RegressionInstrumentation : Instrumentation() {
             }
             val twoMessages = parseMessages(2, 0, 2)
             check(twoMessages.groupCount == 2)
+            val hiddenNotification = android.app.Notification.Builder(targetContext, "regression")
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setStyle(android.app.Notification.MessagingStyle(self)
+                    .addMessage("First", 1L, author).addMessage("Second", 2L, author)).build()
+            val hiddenSbn = android.service.notification.StatusBarNotification("example.sender", "example.sender", 99, null,
+                android.os.Process.myUid(), 0, 0, hiddenNotification, android.os.Process.myUserHandle(), System.currentTimeMillis())
+            val hiddenCard = read.invoke(service, hiddenSbn, emptySet<String>(), false, 2, 0) as NotificationCard
+            check(hiddenCard.groupCount == 2 && hiddenCard.text.isEmpty() && hiddenCard.senderName == null)
             check(twoMessages.displayTime == 1_700_000_000_000L)
             check(twoMessages.displayTime != twoMessages.postTime)
             val twoViews = WidgetRenderer.createViews(isolated, listOf(twoMessages), settings, null, 1f, 360, 265)

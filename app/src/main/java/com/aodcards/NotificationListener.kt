@@ -327,28 +327,34 @@ class NotificationListener : NotificationListenerService() {
                         lockscreenVisibility = notification.visibility,
                         lockscreenVisibilityOverride = visibilityOverride,
                         systemRank = systemRanks[sbn.key] ?: Int.MAX_VALUE,
-                        systemGroupKey = NotificationGrouping.groupKey(conversation, notification.group,
+                        systemGroupKey = NotificationGrouping.groupKey(conversation, notification.shortcutId,
                             overrideKey?.takeIf { it.isNotBlank() } ?: sbn.groupKey, sbn.isGroup),
                         isConversation = conversation,
                         isSystemGroupSummary = sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0
-                    )
+                    )?.let { sbn to it }
                 }
                 .toList()
-            // Keep sources separate until policy and package filtering at the render boundary.
-            val visible = parsed
             refreshHandler.post {
                 if (token == refreshQueue.revision && listenerConnected && CardState.hasAccess(this)) {
                     val latestPolicy = NotificationPrivacy.read(this)
                     val latestPrefs = SettingsRepository(this)
                     val latestRanking = currentRanking
-                    val currentCards = visible.filter { (sourceChanges[it.key] ?: 0L) == (changes[it.key] ?: 0L) }
-                        .map { card ->
+                    val currentCards = parsed.filter { (_, card) -> (sourceChanges[card.key] ?: 0L) == (changes[card.key] ?: 0L) }
+                        .mapNotNull { (sbn, card) ->
                             val rank = Ranking()
-                            card.copy(lockscreenVisibilityOverride = if (latestRanking?.getRanking(card.key, rank) == true)
+                            val updated = card.copy(lockscreenVisibilityOverride = if (latestRanking?.getRanking(card.key, rank) == true)
                                 rank.lockscreenVisibilityOverride else Notification.VISIBILITY_PRIVATE)
+                            latestPolicy.cards(listOf(updated), latestPrefs).singleOrNull()?.let { sbn to it }
                         }
+                    val groupsWithChildren = currentCards.asSequence().filter { (sbn, _) ->
+                        sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY == 0 && sbn.isGroup
+                    }.map { (sbn, _) -> Triple(sbn.packageName, sbn.user, sbn.groupKey) }.toSet()
+                    val visible = currentCards.filterNot { (sbn, _) ->
+                        sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0 &&
+                            Triple(sbn.packageName, sbn.user, sbn.groupKey) in groupsWithChildren
+                    }.map { it.second }
                     val sourceChanged = active.any { (sourceChanges[it.key] ?: 0L) != (changes[it.key] ?: 0L) }
-                    CardState.publish(CardsSnapshot(latestPolicy.cards(currentCards, latestPrefs),
+                    CardState.publish(CardsSnapshot(visible,
                         latestPolicy.music(music.takeUnless { sourceChanged || parsingRankingRevision != rankingRevision }, latestPrefs), ConnectionState.CONNECTED,
                         System.currentTimeMillis(), active.map { it.packageName }.toSet(),
                         active.count { it.packageName in blockedPackages }))
@@ -426,7 +432,9 @@ class NotificationListener : NotificationListenerService() {
                 // Parsing can now discard the notification; do not retain its old snapshot.
                 cardCache.remove(sbn.key)
                 val card = if (mode == 2) NotificationCard(sbn.key, sbn.packageName, appLabel(sbn.packageName),
-                    null, "", "", sbn.postTime, sbn.notification.flags and Notification.FLAG_ONGOING_EVENT != 0, null, null)
+                    null, "", "", sbn.postTime, sbn.notification.flags and Notification.FLAG_ONGOING_EVENT != 0, null, null,
+                    groupCount = maxOf(1, sbn.notification.number,
+                        sbn.notification.extras.getParcelableArray(Notification.EXTRA_MESSAGES)?.size ?: 0))
                 else toCard(sbn, withPreview, withSender, size, prefs.customNotificationsEnabled,
                     keepImageOnly = prefs.compactMode && mode == 0 && withImages) {
                     token == refreshQueue.revision && (sourceChanges[sbn.key] ?: 0L) == sourceVersion

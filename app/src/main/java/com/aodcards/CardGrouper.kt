@@ -96,7 +96,7 @@ object CardGrouper {
 
 /** Preserve the app's conversation identity even when the system bundles the app. */
 object NotificationGrouping {
-    fun groupKey(isConversation: Boolean, appGroup: String?, systemGroup: String?, isSystemGroup: Boolean): String? =
-        if (isConversation) appGroup?.takeIf { it.isNotBlank() }?.let { "conversation:$it" }
+    fun groupKey(isConversation: Boolean, shortcutId: String?, systemGroup: String?, isSystemGroup: Boolean): String? =
+        if (isConversation) shortcutId?.takeIf { it.isNotBlank() }?.let { "conversation:$it" }
         else systemGroup?.takeIf { isSystemGroup && it.isNotBlank() }
 }

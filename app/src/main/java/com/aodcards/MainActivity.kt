@@ -54,6 +54,7 @@ class MainActivity : Activity() {
     private var filterView: AppFilterView? = null
     private var previewWidgetId = -1
     private var lineChoices: ViewGroup? = null
+    private var compactControl: View? = null
     private var customScaleChoices: ViewGroup? = null
     private var customIconControl: View? = null
     private var originalLayoutHelpDialog: android.app.Dialog? = null
@@ -544,12 +545,13 @@ class MainActivity : Activity() {
         }
         contentCard.addView(text(getString(R.string.content_modes_hint), 12f, MUTED), margin(top = 8))
         addSeparator(contentCard)
-        contentCard.addView(switchRow(getString(R.string.compact_mode), getString(R.string.localized_048), settings.compactMode) {
+        compactControl = switchRow(getString(R.string.compact_mode), getString(R.string.localized_048), settings.compactMode) {
             settings.compactMode = it
             updateContentControls()
             renderPreview()
             NotificationListener.refreshSnapshot(this)
-        }, wrap())
+        }
+        contentCard.addView(compactControl, wrap())
         addSeparator(contentCard)
         contentCard.addView(switchRow(getString(R.string.localized_049), getString(R.string.localized_050), settings.musicPillEnabled) {
             settings.musicPillEnabled = it
@@ -982,6 +984,15 @@ class MainActivity : Activity() {
     }
 
     private fun updateContentControls() {
+        compactControl?.let { control ->
+            val enabled = settings.contentMode != 2
+            control.alpha = if (enabled) 1f else .4f
+            fun enable(view: View) {
+                view.isEnabled = enabled
+                if (view is ViewGroup) for (index in 0 until view.childCount) enable(view.getChildAt(index))
+            }
+            enable(control)
+        }
         lineChoices?.let { group ->
             val enabled = settings.contentMode == 0
             group.alpha = if (enabled) 1f else .4f

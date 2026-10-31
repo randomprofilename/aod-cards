@@ -19,12 +19,18 @@ data class WidgetRenderModel(
             var imageBytes = 0
             // Filter before grouping: an ongoing summary can contain multiple packages.
             val allowed = cards.filterNot { it.packageName in settings.blockedPackages }
-            val safeCards = CardGrouper.prepare(allowed, settings.ongoingMode).map { card ->
+            val prepared = CardGrouper.prepare(allowed, settings.ongoingMode)
+            // App-only mode represents app presence, rather than individual chats.
+            // Preserve the separate aggregate for grouped ongoing notifications.
+            val visible = if (settings.contentMode == 2)
+                prepared.distinctBy { it.packageName to it.isOngoingGroup } else prepared
+            val safeCards = visible.map { card ->
                 when (settings.contentMode) {
                     1 -> card.copy(title = "", text = "", previewImage = null,
                         isOngoingGroup = false,
                         appName = if (card.isOngoingGroup) context.getString(R.string.localized_001) else card.appName)
                     2 -> card.copy(senderName = null, senderImage = null, title = "", text = "", previewImage = null,
+                        groupCount = 1, isCollapsedGroup = false,
                         isOngoingGroup = false,
                         appName = if (card.isOngoingGroup) context.getString(R.string.localized_001) else card.appName)
                     else -> card
