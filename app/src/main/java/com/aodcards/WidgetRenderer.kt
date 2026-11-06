@@ -1,7 +1,13 @@
 package com.aodcards
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.util.TypedValue
+import android.view.View
+import android.widget.FrameLayout
 import android.widget.RemoteViews
+import kotlin.math.roundToInt
 
 /** Both the live widget and preview use this exact RemoteViews tree. */
 object WidgetRenderer {
@@ -22,6 +28,51 @@ object WidgetRenderer {
             ?: options.getInt(android.appwidget.AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT).takeIf { it > 0 } ?: DEFAULT_HEIGHT_DP
         return width to height
     }
+
+    internal fun createLiveViews(context: Context, settings: SettingsRepository, scale: Float,
+        width: Int, height: Int, screenInteractive: Boolean, plan: WidgetRenderModel,
+        useFixedSurface: Boolean): RemoteViews {
+        if (useFixedSurface) {
+            // LockStar can stop laying out new children after folding. Mount the image
+            // with the same intrinsic size in both states and let XML fill the host.
+            return RemoteViews(context.packageName, if (settings.tapToUnlockEnabled)
+                R.layout.widget_cards_surface_tap_unlock else R.layout.widget_cards_surface).apply {
+                if (settings.tapToUnlockEnabled) {
+                    setOnClickPendingIntent(R.id.widget_root, UnlockActivity.pendingIntent(context))
+                }
+                val hidden = screenInteractive && !settings.showWhenScreenOn
+                if (hidden || (plan.cards.isEmpty() && plan.music == null && plan.overflow == 0)) {
+                    setImageViewResource(R.id.widget_surface, R.drawable.widget_surface_blank)
+                } else {
+                    val content = createViews(context, plan.cards, settings, plan.music, scale, width, height, plan = plan)
+                    setImageViewBitmap(R.id.widget_surface, drawSurface(context, content, width, height))
+                }
+            }
+        }
+        return createViews(context, plan.cards, settings, plan.music, scale, width, height,
+            screenInteractive, plan, enableUnlockTap = true).apply {
+            setViewLayoutWidth(R.id.widget_root, width.toFloat(), TypedValue.COMPLEX_UNIT_DIP)
+            setViewLayoutHeight(R.id.widget_root, height.toFloat(), TypedValue.COMPLEX_UNIT_DIP)
+        }
+    }
+
+    private fun drawSurface(context: Context, views: RemoteViews, width: Int, height: Int): Bitmap {
+        val density = context.resources.displayMetrics.density
+        val widthPx = (width * density).roundToInt().coerceAtLeast(1)
+        val heightPx = (height * density).roundToInt().coerceAtLeast(1)
+        val root = views.apply(context, FrameLayout(context))
+        root.measure(View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(heightPx, View.MeasureSpec.EXACTLY))
+        root.layout(0, 0, widthPx, heightPx)
+        val bitmap = Bitmap.createBitmap(context.resources.getDimensionPixelSize(R.dimen.widget_surface_width),
+            context.resources.getDimensionPixelSize(R.dimen.widget_surface_height), Bitmap.Config.ARGB_8888)
+        bitmap.density = Bitmap.DENSITY_NONE
+        val canvas = Canvas(bitmap)
+        canvas.scale(bitmap.width.toFloat() / widthPx, bitmap.height.toFloat() / heightPx)
+        root.draw(canvas)
+        return bitmap
+    }
+
     fun createViews(
         context: Context,
         cards: List<NotificationCard>,

@@ -45,7 +45,7 @@ You’ll need a Samsung device running **Android 16 (API 36) or later**, plus **
 
 - **Widget dimming.** LockStar automatically dims the widget on Always On Display. This behavior cannot be adjusted in AOD Cards.
 - **Touch gestures over the widget.** Android cannot pass touches through the widget to the lock screen, so **Unlock on tap** requests the unlock from the widget itself. The unlock animation may look a little choppy because of this.
-- **Blank widget.** The widget may occasionally appear empty. Removing it and adding it again can help. Bug reports are welcome.
+- **Blank widget.** On foldable Samsung phones, LockStar can leave the cover-screen widget blank after folding. AOD Cards uses a fixed drawing surface when **Show notifications when the screen is on** is disabled to reduce layout changes during the transition.
 - **Google Play Protect warning.** Google Play Protect may flag the provided APK as dangerous. If you don’t trust the provided APK, you can [build it from source](#build).
 
 ## Privacy

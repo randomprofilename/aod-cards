@@ -1,0 +1,4 @@
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <size android:width="@dimen/widget_surface_width" android:height="@dimen/widget_surface_height" />
+    <solid android:color="@android:color/transparent" />
+</shape>
