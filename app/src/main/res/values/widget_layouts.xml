@@ -2,4 +2,7 @@
     <!-- Distinct IDs force hosts to replace the tree when tap behavior changes. -->
     <item name="widget_cards_dynamic_passive" type="layout">@layout/widget_cards_grouped</item>
     <item name="widget_cards_dynamic_tap_unlock" type="layout">@layout/widget_cards_grouped</item>
+    <item name="widget_cards_surface_tap_unlock" type="layout">@layout/widget_cards_surface</item>
+    <dimen name="widget_surface_width">1024px</dimen>
+    <dimen name="widget_surface_height">768px</dimen>
 </resources>

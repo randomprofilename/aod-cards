@@ -32,6 +32,11 @@ class NotificationListener : NotificationListenerService() {
     @Volatile private var listenerConnected = false
     @Volatile private var screenInteractive: Boolean? = null
     private val refreshHandler = Handler(Looper.getMainLooper())
+    private var lastSnapshotRenderAt: Long? = null
+    private val renderSnapshot = Runnable {
+        lastSnapshotRenderAt = android.os.SystemClock.uptimeMillis()
+        AodCardsWidgetProvider.renderAll(this)
+    }
     private val workerThread = HandlerThread("AODCards-parser").apply { start() }
     private val worker = Handler(workerThread.looper)
     private val refreshQueue = RefreshQueue(
@@ -135,6 +140,7 @@ class NotificationListener : NotificationListenerService() {
     override fun onDestroy() {
         Log.i("AODCards", "Notification listener destroyed")
         refreshQueue.cancel()
+        refreshHandler.removeCallbacks(renderSnapshot)
         refreshHandler.removeCallbacks(screenOffRefresh)
         if (privacyObserverRegistered) contentResolver.unregisterContentObserver(privacyObserver)
         if (displayListenerRegistered) try { displayManager.unregisterDisplayListener(displayListener) } catch (_: Exception) { }
@@ -263,6 +269,18 @@ class NotificationListener : NotificationListenerService() {
         if (listenerConnected) refreshQueue.request(delay, invalidate)
     }
 
+    private fun renderRefreshedSnapshot() {
+        val lastRender = lastSnapshotRenderAt
+        val elapsed = if (lastRender == null) 1000L else android.os.SystemClock.uptimeMillis() - lastRender
+        if (!AodCardsWidgetProvider.usesFixedSurface(this, SettingsRepository(this)) || elapsed >= 1000L) {
+            refreshHandler.removeCallbacks(renderSnapshot)
+            renderSnapshot.run()
+        } else if (!refreshHandler.hasCallbacks(renderSnapshot)) {
+            // Keep the first deadline so a continuous stream cannot starve updates.
+            refreshHandler.postDelayed(renderSnapshot, 1000L - elapsed)
+        }
+    }
+
     private fun startRefresh(token: Int) {
         if (!worker.post {
             try {
@@ -361,7 +379,7 @@ class NotificationListener : NotificationListenerService() {
                     val activeKeys = active.mapTo(hashSetOf()) { it.key }
                     sourceChanges.entries.removeIf { it.key !in activeKeys && it.value == changes[it.key] }
                     lastFailure = null
-                    AodCardsWidgetProvider.renderAll(this)
+                    renderRefreshedSnapshot()
                 }
             }
         } catch (e: Exception) {

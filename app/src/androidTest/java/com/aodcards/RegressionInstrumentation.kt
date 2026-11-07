@@ -993,6 +993,74 @@ class RegressionInstrumentation : Instrumentation() {
         val music = MusicTrack("com.example.player", "Track", "Artist", null, true)
         fun views(list: List<NotificationCard>, track: MusicTrack? = null, interactive: Boolean = false) =
             WidgetRenderer.createViews(isolated, list, settings, track, 1f, 360, 4000, interactive)
+        // Exercise host updates and geometry, not just direct RemoteViews.reapply.
+        settings.showWhenScreenOn = false
+        for (tap in listOf(false, true)) {
+            settings.tapToUnlockEnabled = tap
+            val host = android.appwidget.AppWidgetHostView(isolated)
+            fun update(interactive: Boolean, width: Int): android.widget.RemoteViews {
+                val remote = WidgetRenderer.createViews(isolated, cards, settings, music, 1f,
+                    width, 4000, interactive, enableUnlockTap = true)
+                host.updateAppWidget(remote)
+                host.measure(View.MeasureSpec.makeMeasureSpec(
+                    (width * isolated.resources.displayMetrics.density).toInt(), View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                host.layout(0, 0, host.measuredWidth, host.measuredHeight)
+                return remote
+            }
+            val visible = update(false, 360)
+            repeat(3) {
+                val oldRoot = host.findViewById<View>(R.id.widget_root)
+                val hidden = update(true, 700)
+                check(hidden.layoutId == visible.layoutId)
+                check(host.findViewById<View>(R.id.widget_root) === oldRoot)
+                check(host.findViewById<android.view.ViewGroup>(R.id.widget_notification_container).childCount == 0)
+                update(true, 360) // Fold while interactive and empty.
+                val hiddenRoot = host.findViewById<View>(R.id.widget_root)
+                update(false, 360)
+                check(host.findViewById<View>(R.id.widget_root) === hiddenRoot)
+                val restored = host.findViewById<android.view.ViewGroup>(R.id.widget_notification_container)
+                check(restored.childCount == WidgetRows.MAX_VISIBLE_CARDS)
+                for (index in 0 until restored.childCount) {
+                    check(restored.getChildAt(index).width > 0 && restored.getChildAt(index).height > 0)
+                }
+                check(host.findViewById<View>(R.id.music_pill).height > 0)
+            }
+            settings.showWhenScreenOn = true
+            check(update(true, 360).layoutId == visible.layoutId)
+            settings.showWhenScreenOn = false
+        }
+        settings.tapToUnlockEnabled = false
+        val surfaceHost = android.appwidget.AppWidgetHostView(isolated)
+        val surfacePlan = WidgetRenderModel.build(cards, settings, music, 398, 289, isolated)
+        fun updateSurface(interactive: Boolean) = surfaceHost.updateAppWidget(
+            WidgetRenderer.createLiveViews(isolated, settings, 1f, 398, 289, interactive, surfacePlan,
+                useFixedSurface = true))
+        updateSurface(true)
+        surfaceHost.measure(View.MeasureSpec.makeMeasureSpec(398, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(289, View.MeasureSpec.EXACTLY))
+        surfaceHost.layout(0, 0, surfaceHost.measuredWidth, surfaceHost.measuredHeight)
+        val surface = surfaceHost.findViewById<android.widget.ImageView>(R.id.widget_surface)
+        check(surface.width > 0 && surface.height > 0)
+        val blankWidth = surface.drawable.intrinsicWidth
+        val blankHeight = surface.drawable.intrinsicHeight
+        val frame = Bitmap.createBitmap(surface.width, surface.height, Bitmap.Config.ARGB_8888)
+        val frameCanvas = Canvas(frame)
+        repeat(3) {
+            // Simulate a host that applies updates but skips the next layout pass.
+            updateSurface(false)
+            check(surfaceHost.findViewById<View>(R.id.widget_surface) === surface)
+            check(surface.drawable.intrinsicWidth == blankWidth && surface.drawable.intrinsicHeight == blankHeight)
+            check(!surface.isLayoutRequested)
+            surface.draw(frameCanvas)
+            check(frame.getPixel(frame.width / 2, frame.height / 5) != android.graphics.Color.TRANSPARENT)
+            updateSurface(true)
+            frame.eraseColor(android.graphics.Color.TRANSPARENT)
+            check(!surface.isLayoutRequested)
+            surface.draw(frameCanvas)
+            check(frame.getPixel(frame.width / 2, frame.height / 5) == android.graphics.Color.TRANSPARENT)
+        }
+        frame.recycle()
         val root = views(cards, music).apply(isolated, FrameLayout(isolated))
         val content = root.findViewById<android.view.ViewGroup>(R.id.widget_content)
         check(content.getChildAt(0).id == R.id.widget_music_container) { "Music must appear above notifications" }

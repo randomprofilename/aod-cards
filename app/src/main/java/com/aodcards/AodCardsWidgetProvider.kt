@@ -5,6 +5,8 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
 
 class AodCardsWidgetProvider : AppWidgetProvider() {
@@ -32,6 +34,9 @@ class AodCardsWidgetProvider : AppWidgetProvider() {
         private data class Rendered(val key: WidgetUpdateKey, val hidden: Boolean, val hasOverflow: Boolean)
         private val rendered = android.util.LruCache<Int, Rendered>(32)
         fun renderAll(context: Context) = render(context, null)
+        internal fun usesFixedSurface(context: Context, settings: SettingsRepository): Boolean =
+            !settings.showWhenScreenOn && Build.MANUFACTURER.equals("samsung", ignoreCase = true) &&
+                context.packageManager.hasSystemFeature(PackageManager.FEATURE_SENSOR_HINGE_ANGLE)
 
         private fun render(context: Context, requestedIds: IntArray?, force: Boolean = false) {
             try {
@@ -43,6 +48,7 @@ class AodCardsWidgetProvider : AppWidgetProvider() {
                 }
                 val settings = SettingsRepository(context)
                 val screenInteractive = NotificationListener.isScreenInteractive(context)
+                val useFixedSurface = usesFixedSurface(context, settings)
                 val hasAccess = CardState.hasAccess(context)
                 val privacy = NotificationPrivacy.read(context)
                 val snapshot = if (hasAccess) privacy.cards(NotificationListener.snapshot(), settings) else emptyList()
@@ -61,13 +67,8 @@ class AodCardsWidgetProvider : AppWidgetProvider() {
                         // A full replacement clears secrets from the host on visibility changes.
                         if (!force && previous?.key == key && hidden == previous.hidden) return@forEach
                         val plan = WidgetRenderModel.build(cards, settings, music, width, height, context)
-                        val views = WidgetRenderer.createViews(context, cards, settings, music, scale, width, height,
-                            screenInteractive, plan, enableUnlockTap = true)
-                        // LockStar can measure its remote child with a zero-sized
-                        // parent spec while restoring an AOD container. Explicit
-                        // bounds prevent MATCH_PARENT/WRAP_CONTENT collapsing to 0.
-                        views.setViewLayoutWidth(R.id.widget_root, width.toFloat(), android.util.TypedValue.COMPLEX_UNIT_DIP)
-                        if (height > 0) views.setViewLayoutHeight(R.id.widget_root, height.toFloat(), android.util.TypedValue.COMPLEX_UNIT_DIP)
+                        val views = WidgetRenderer.createLiveViews(context, settings, scale, width, height,
+                            screenInteractive, plan, useFixedSurface)
                         manager.updateAppWidget(widgetId, views)
                         rendered.put(widgetId, Rendered(key, hidden, plan.overflow > 0))
                     } catch (e: Exception) {
