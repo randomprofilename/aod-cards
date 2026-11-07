@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2.2
+
+- Improved widget display stability.
+
 ## v0.2.1
 
 - Fixed incorrect notification grouping and content mode controls
