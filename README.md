@@ -54,7 +54,7 @@ The same APK also contains an optional modern Xposed module. On a rooted phone w
 
 With the module active, LockStar's AOD Cards widget declines all touch events before they reach the widget. SystemUI can handle its normal swipe unlock, including swipes starting in blank widget space. **Unlock on tap** is ignored on this surface while the module is active. Disabling the module and rebooting restores the existing tap behavior. Other widgets keep their touch handling.
 
-This has been tested on-device for **LockStar 9.0.00.5 / One UI 9**. 
+This targets **LockStar 9.0.00.5 / One UI 9**. The module hooks only `PluginLockStarManager.isTouchable()`, before it dispatches into LockStar. It checks the widget's current transformed bounds at gesture start and keeps that decision for the gesture. It leaves overlapping extra-content items above the widget to LockStar and does not hook framework-wide touch dispatch.
 
 ## Privacy
 

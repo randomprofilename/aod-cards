@@ -62,7 +62,7 @@ class RegressionInstrumentation : Instrumentation() {
             settings = SettingsRepository(isolated)
             if (touchOnly) {
                 onMain { TouchPassthroughRegression.check(isolated) }
-                result.putString("stream", "PASS: LockStar passthrough, complete parent swipe, other providers, ordinary hosts, unbound hosts")
+                result.putString("stream", "PASS: manager bypass, gesture tracking, transforms, overlap/Z order, visibility, reinflation, blank space, other providers and ordinary hosts")
                 finish(Activity.RESULT_OK, result)
                 return
             }
