@@ -18,12 +18,14 @@ class RegressionInstrumentation : Instrumentation() {
     private lateinit var isolated: Context
     private lateinit var settings: SettingsRepository
     private var pickerOnly = false
+    private var touchOnly = false
     private var privacyOnly = false
     private var liveSnapshotOnly = false
     private var customSettingsOnly = false
     private var wakeTestWindow = false
 
     override fun onCreate(arguments: Bundle?) {
+        touchOnly = arguments?.getString("touch_only") == "true"
         privacyOnly = arguments?.getString("privacy_only") == "true"
         liveSnapshotOnly = arguments?.getString("live_snapshot_only") == "true"
         customSettingsOnly = arguments?.getString("custom_settings_only") == "true"
@@ -58,6 +60,12 @@ class RegressionInstrumentation : Instrumentation() {
             }
             isolated.getSharedPreferences("settings", 0).edit().clear().commit()
             settings = SettingsRepository(isolated)
+            if (touchOnly) {
+                onMain { TouchPassthroughRegression.check(isolated) }
+                result.putString("stream", "PASS: LockStar passthrough, complete parent swipe, other providers, ordinary hosts, unbound hosts")
+                finish(Activity.RESULT_OK, result)
+                return
+            }
             check(!settings.customNotificationsEnabled) { "Original notification layout must be off by default" }
             check(!settings.customHideAppIcon) { "Original layouts must show the app icon by default" }
             if (customSettingsOnly) {
@@ -243,6 +251,7 @@ class RegressionInstrumentation : Instrumentation() {
         val checks: List<Pair<String, () -> Unit>> = listOf(
             "privacy" to ::checkPrivacy,
             "widget unlock interaction" to ::checkWidgetUnlockInteraction,
+            "LockStar touch passthrough" to { TouchPassthroughRegression.check(isolated) },
             "refresh queue" to ::checkRefreshQueue,
             "optimized rendering" to ::checkOptimizedRendering,
             "localization" to ::checkLocalization,

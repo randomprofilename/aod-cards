@@ -1,4 +1,5 @@
 <resources>
+    <string name="xposed_module_description">Optional LockStar touch passthrough for AOD Cards. Enable for System UI and reboot to use normal swipe unlock over the widget.</string>
     <string name="experimental_title">Experimental</string>
     <string name="experimental_expanded">Expanded</string>
     <string name="experimental_collapsed">Collapsed</string>
@@ -158,5 +159,5 @@
     <string name="about_tested_device">Tested and optimized for Samsung Galaxy Z Fold8 with One UI 9.</string>
     <string name="ongoing_examples">For example, charging, navigation, or active services.</string>
     <string name="tap_to_unlock">Unlock on tap</string>
-    <string name="tap_to_unlock_hint">Tap the widget to request system unlock. The unlock animation may be broken only when started from this widget.</string>
+    <string name="tap_to_unlock_hint">Tap the widget to request system unlock. The unlock animation may look choppy. With AOD Cards enabled in LSPosed for System UI, touches pass through to swipe unlock and this setting is ignored.</string>
 </resources>

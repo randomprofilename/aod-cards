@@ -44,9 +44,17 @@ You’ll need a Samsung device running **Android 16 (API 36) or later**, plus **
 ## Known issues
 
 - **Widget dimming.** LockStar automatically dims the widget on Always On Display. This behavior cannot be adjusted in AOD Cards.
-- **Touch gestures over the widget.** Android cannot pass touches through the widget to the lock screen, so **Unlock on tap** requests the unlock from the widget itself. The unlock animation may look a little choppy because of this.
+- **Touch gestures over the widget.** LockStar consumes touches in a clickable parent outside the widget, even with **Unlock on tap** disabled. Without root, **Unlock on tap** requests unlock from the widget itself; its animation may look choppy. For normal swipe unlock, see the optional passthrough module below.
 - **Blank widget.** The widget may occasionally appear empty. Removing it and adding it again can help. [Waiting for bugfix in Lockstar](https://community.samsung.com/kr/conversations/z/%EB%9D%BD%EC%8A%A4%ED%83%80-%EC%9E%A0%EA%B8%88%ED%99%94%EB%A9%B4-%EC%9C%84%EC%A0%AF-%EC%82%AC%EB%9D%BC%EC%A7%80%EB%8A%94-%ED%98%84%EC%83%81/r1_39283450?commentId=r1_39298889)
 - **Google Play Protect warning.** Google Play Protect may flag the provided APK as dangerous. If you don’t trust the provided APK, you can [build it from source](#build).
+
+## Optional swipe passthrough (root)
+
+The same APK also contains an optional modern Xposed module. On a rooted phone with an LSPosed build supporting [libxposed API 102](https://github.com/libxposed/api), enable **AOD Cards** in LSPosed, leave its scope set to **System UI** (`com.android.systemui`), and reboot.
+
+With the module active, LockStar's AOD Cards widget declines all touch events before they reach the widget. SystemUI can handle its normal swipe unlock, including swipes starting in blank widget space. **Unlock on tap** is ignored on this surface while the module is active. Disabling the module and rebooting restores the existing tap behavior. Other widgets keep their touch handling.
+
+This has been tested on-device for **LockStar 9.0.00.5 / One UI 9**. 
 
 ## Privacy
 

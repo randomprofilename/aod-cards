@@ -2,6 +2,11 @@ plugins {
     id 'com.android.application'
 }
 
+dependencies {
+    // Provided by LSPosed only when this APK is enabled as a module.
+    compileOnly 'io.github.libxposed:api:102.0.0'
+}
+
 android {
     namespace 'com.aodcards'
     compileSdk 37
@@ -20,6 +25,7 @@ android {
     }
     buildTypes {
         release {
+            proguardFiles 'proguard-rules.pro'
             optimization {
                 enable = true
             }
