@@ -22,6 +22,8 @@ class RegressionInstrumentation : Instrumentation() {
     private var liveSnapshotOnly = false
     private var customSettingsOnly = false
     private var wakeTestWindow = false
+    private var hostProbeOnly = false
+    private var hostProbeKind = "layout"
 
     override fun onCreate(arguments: Bundle?) {
         privacyOnly = arguments?.getString("privacy_only") == "true"
@@ -29,6 +31,8 @@ class RegressionInstrumentation : Instrumentation() {
         customSettingsOnly = arguments?.getString("custom_settings_only") == "true"
         pickerOnly = arguments?.getString("picker_only") == "true"
         wakeTestWindow = arguments?.getString("wake_test_window") == "true"
+        hostProbeOnly = arguments?.getString("host_probe_only") == "true"
+        hostProbeKind = arguments?.getString("host_probe_kind") ?: "layout"
         super.onCreate(arguments)
         start()
     }
@@ -52,6 +56,11 @@ class RegressionInstrumentation : Instrumentation() {
     override fun onStart() {
         val result = Bundle()
         try {
+            if (hostProbeOnly) {
+                result.putString("stream", SamsungHostProbe.run(this, targetContext, hostProbeKind))
+                finish(Activity.RESULT_OK, result)
+                return
+            }
             isolated = object : ContextWrapper(targetContext) {
                 override fun getSharedPreferences(name: String, mode: Int) =
                     super.getSharedPreferences("regression_$name", mode)
@@ -1031,11 +1040,30 @@ class RegressionInstrumentation : Instrumentation() {
             settings.showWhenScreenOn = false
         }
         settings.tapToUnlockEnabled = false
+        // Reproduce the observed missing child measurement without assuming a
+        // Samsung fold lifecycle: onLayout must repair it via the size variant.
+        val recoveryHost = object : android.appwidget.AppWidgetHostView(isolated) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                setMeasuredDimension(View.MeasureSpec.getSize(widthMeasureSpec),
+                    View.MeasureSpec.getSize(heightMeasureSpec))
+            }
+        }
+        val recoveryPlan = WidgetRenderModel.build(cards, settings, music, 398, 289, isolated)
+        recoveryHost.updateAppWidget(WidgetRenderer.createLiveViews(isolated, settings, 1f,
+            398, 289, false, recoveryPlan, useFixedSurface = true, useSamsungBoundsSurface = false))
+        val recoveryWidth = (398 * isolated.resources.displayMetrics.density).toInt()
+        val recoveryHeight = (289 * isolated.resources.displayMetrics.density).toInt()
+        recoveryHost.measure(View.MeasureSpec.makeMeasureSpec(recoveryWidth, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(recoveryHeight, View.MeasureSpec.EXACTLY))
+        check(recoveryHost.findViewById<View>(R.id.widget_root).measuredWidth == 0)
+        recoveryHost.layout(0, 0, recoveryWidth, recoveryHeight)
+        check(recoveryHost.findViewById<View>(R.id.widget_root).width > 0)
+        check(recoveryHost.findViewById<View>(R.id.widget_surface).height > 0)
         val surfaceHost = android.appwidget.AppWidgetHostView(isolated)
         val surfacePlan = WidgetRenderModel.build(cards, settings, music, 398, 289, isolated)
         fun updateSurface(interactive: Boolean) = surfaceHost.updateAppWidget(
             WidgetRenderer.createLiveViews(isolated, settings, 1f, 398, 289, interactive, surfacePlan,
-                useFixedSurface = true))
+                useFixedSurface = true, useSamsungBoundsSurface = false))
         updateSurface(true)
         surfaceHost.measure(View.MeasureSpec.makeMeasureSpec(398, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(289, View.MeasureSpec.EXACTLY))
@@ -1061,6 +1089,86 @@ class RegressionInstrumentation : Instrumentation() {
             check(frame.getPixel(frame.width / 2, frame.height / 5) == android.graphics.Color.TRANSPARENT)
         }
         frame.recycle()
+        if (SamsungWidgetSurface.available) {
+            // A new editor host has no size options and a blank screen-on frame.
+            // It must negotiate the normal size even with wrap-content/AT_MOST specs.
+            fun checkNewHiddenSurface(width: Int, height: Int) {
+                val freshHost = android.appwidget.AppWidgetHostView(isolated).apply { setPadding(0, 0, 0, 0) }
+                freshHost.updateAppWidget(checkNotNull(SamsungWidgetSurface.create(isolated, settings, null, width, height)))
+                val limit = (700 * isolated.resources.displayMetrics.density + .5f).toInt()
+                freshHost.measure(View.MeasureSpec.makeMeasureSpec(limit, View.MeasureSpec.AT_MOST),
+                    View.MeasureSpec.makeMeasureSpec(limit, View.MeasureSpec.AT_MOST))
+                val expectedWidth = (width * isolated.resources.displayMetrics.density + .5f).toInt()
+                val expectedHeight = (height * isolated.resources.displayMetrics.density + .5f).toInt()
+                check(freshHost.measuredWidth == expectedWidth && freshHost.measuredHeight == expectedHeight) {
+                    "New hidden surface collapsed: ${freshHost.measuredWidth}x${freshHost.measuredHeight}, expected ${expectedWidth}x${expectedHeight}"
+                }
+                check((freshHost.findViewById<View>(R.id.widget_root) as android.widget.CheckBox).buttonDrawable == null)
+            }
+            val initialSize = WidgetRenderer.sizeFor(android.os.Bundle().apply {
+                putInt(android.appwidget.AppWidgetManager.OPTION_APPWIDGET_HOST_CATEGORY, 1)
+            })
+            val initialPlaceholder = android.widget.RemoteViews(isolated.packageName,
+                R.layout.widget_cards_intrinsic).apply(isolated, FrameLayout(isolated))
+            val initialLimit = (700 * isolated.resources.displayMetrics.density + .5f).toInt()
+            initialPlaceholder.measure(View.MeasureSpec.makeMeasureSpec(initialLimit, View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(initialLimit, View.MeasureSpec.AT_MOST))
+            check(initialPlaceholder.measuredWidth == (initialSize.first * isolated.resources.displayMetrics.density + .5f).toInt())
+            check(initialPlaceholder.measuredHeight == (initialSize.second * isolated.resources.displayMetrics.density + .5f).toInt())
+            checkNewHiddenSurface(initialSize.first, initialSize.second)
+            checkNewHiddenSurface(390, 292)
+            // Exercise the actual drawable path without ANY measure/layout call.
+            // This catches ImageView's missing-frame failure, rather than assuming a
+            // normal host traversal is proof of recovery in the affected SystemUI.
+            fun intrinsicViews(interactive: Boolean) = WidgetRenderer.createLiveViews(isolated,
+                settings, 1f, 398, 289, interactive, surfacePlan, useFixedSurface = true)
+            val button = intrinsicViews(false).apply(isolated, FrameLayout(isolated)) as android.widget.CheckBox
+            val drawableFrame = Bitmap.createBitmap(recoveryWidth, recoveryHeight, Bitmap.Config.ARGB_8888)
+            val drawablePixels = IntArray(drawableFrame.width * drawableFrame.height)
+            fun drawWithoutMeasure() {
+                check(button.measuredWidth == 0 && button.measuredHeight == 0)
+                button.left = 0; button.top = 0
+                button.right = SamsungWidgetSurface.VIEWPORT; button.bottom = SamsungWidgetSurface.VIEWPORT
+                drawableFrame.eraseColor(android.graphics.Color.TRANSPARENT)
+                button.draw(Canvas(drawableFrame))
+                drawableFrame.getPixels(drawablePixels, 0, drawableFrame.width,
+                    0, 0, drawableFrame.width, drawableFrame.height)
+            }
+            check(!button.isClickable && !button.hasOnClickListeners())
+            repeat(3) {
+                intrinsicViews(true).reapply(isolated, button)
+                check(button.buttonDrawable == null) { "Hidden Samsung surface retained its bitmap" }
+                drawWithoutMeasure()
+                check(drawablePixels.all { it ushr 24 == 0 }) { "Hidden drawable surface leaked pixels" }
+                intrinsicViews(false).reapply(isolated, button)
+                val iconDrawable = checkNotNull(button.buttonDrawable)
+                check(iconDrawable.intrinsicWidth == (398 * isolated.resources.displayMetrics.density + .5f).toInt())
+                check(iconDrawable.intrinsicHeight == (289 * isolated.resources.displayMetrics.density + .5f).toInt())
+                drawWithoutMeasure()
+                check(drawablePixels.any { it ushr 24 != 0 }) { "Drawable surface cannot draw without a measure pass" }
+            }
+            val rtlConfig = android.content.res.Configuration(isolated.resources.configuration).apply {
+                setLayoutDirection(java.util.Locale.forLanguageTag("ar"))
+            }
+            val rtlContext = isolated.createConfigurationContext(rtlConfig)
+            val rtlButton = WidgetRenderer.createLiveViews(rtlContext, settings, 1f, 398, 289,
+                false, surfacePlan, useFixedSurface = true).apply(rtlContext, FrameLayout(rtlContext))
+            rtlButton.left = 0; rtlButton.top = 0
+            rtlButton.right = SamsungWidgetSurface.VIEWPORT; rtlButton.bottom = SamsungWidgetSurface.VIEWPORT
+            drawableFrame.eraseColor(android.graphics.Color.TRANSPARENT)
+            rtlButton.draw(Canvas(drawableFrame))
+            drawableFrame.getPixels(drawablePixels, 0, drawableFrame.width,
+                0, 0, drawableFrame.width, drawableFrame.height)
+            check(drawablePixels.any { it ushr 24 != 0 }) { "RTL surface moved its bitmap outside the host clip" }
+            settings.tapToUnlockEnabled = true
+            val tapViews = intrinsicViews(false)
+            val tapButton = tapViews.apply(isolated, FrameLayout(isolated))
+            check(tapButton.isClickable && tapButton.hasOnClickListeners())
+            settings.tapToUnlockEnabled = false
+            check(tapViews.layoutId != intrinsicViews(false).layoutId)
+            check(SamsungWidgetSurface.create(isolated, settings, null, Int.MAX_VALUE, 289) == null)
+            drawableFrame.recycle()
+        }
         val root = views(cards, music).apply(isolated, FrameLayout(isolated))
         val content = root.findViewById<android.view.ViewGroup>(R.id.widget_content)
         check(content.getChildAt(0).id == R.id.widget_music_container) { "Music must appear above notifications" }
