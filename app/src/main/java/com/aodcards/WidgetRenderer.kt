@@ -38,7 +38,7 @@ object WidgetRenderer {
                 val empty = hidden || plan.cards.isEmpty() && plan.music == null && plan.overflow == 0
                 val frame = if (empty) null else drawSurface(context,
                     createViews(context, plan.cards, settings, plan.music, scale, width, height, plan = plan), width, height)
-                SamsungWidgetSurface.create(context, settings, frame, width, height)?.let { return it }
+                SamsungWidgetSurface.create(context, settings, frame, width, height, editorPreview = hidden)?.let { return it }
             }
             // LockStar can stop laying out new children after folding. Mount the image
             // with the same intrinsic size in both states and let XML fill the host.

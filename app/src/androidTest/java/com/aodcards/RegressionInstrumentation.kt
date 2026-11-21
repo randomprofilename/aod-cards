@@ -261,6 +261,7 @@ class RegressionInstrumentation : Instrumentation() {
             "grouping" to ::checkGrouping,
             "grouped layout" to ::checkGroupedCardLayout,
             "conversation tail" to ::checkConversationTail,
+            "editor preview" to ::checkEditorPreview,
             "rendering" to ::checkRendering,
             "avatars" to ::checkAvatars,
             "packing" to ::checkPacking,
@@ -994,6 +995,54 @@ class RegressionInstrumentation : Instrumentation() {
         }
     }
 
+    private fun checkEditorPreview() {
+        check(!EditorPreviewProvider.isEditorCaller(isolated, android.os.Process.myUid()))
+        val editorUid = runCatching {
+            isolated.packageManager.getApplicationInfo("com.samsung.android.app.dressroom", 0).uid
+        }.getOrNull()
+        if (editorUid != null) check(EditorPreviewProvider.isEditorCaller(isolated, editorUid))
+        else check(!EditorPreviewProvider.isEditorCaller(isolated, 1000))
+        val oldPosition = settings.overflowBadgePosition
+        val oldMode = settings.contentMode
+        val oldBlocked = settings.blockedPackages
+        try {
+            settings.contentMode = 0
+            settings.blockedPackages = emptySet()
+            val badges = listOf(R.id.widget_overflow_left, R.id.widget_overflow_center, R.id.widget_overflow_right)
+            for (position in 0..2) {
+                settings.overflowBadgePosition = position
+                val small = EditorPreviewProvider.demoViews(isolated, 398, 160).apply(isolated, FrameLayout(isolated))
+                check(small.findViewById<View>(R.id.widget_overflow_row).visibility == View.VISIBLE)
+                for ((index, id) in badges.withIndex()) {
+                    val badge = small.findViewById<TextView>(id)
+                    check((badge.visibility == View.VISIBLE) == (index == position))
+                    if (index == position) check(badge.text.startsWith("+"))
+                }
+                val large = EditorPreviewProvider.demoViews(isolated, 398, 2000).apply(isolated, FrameLayout(isolated))
+                check(large.findViewById<View>(R.id.widget_overflow_row).visibility == View.GONE)
+            }
+        } finally {
+            settings.overflowBadgePosition = oldPosition
+            settings.contentMode = oldMode
+            settings.blockedPackages = oldBlocked
+        }
+        val demo = EditorPreviewProvider.render(isolated, 600, 430, true)
+        val pixels = IntArray(demo.width * demo.height)
+        demo.getPixels(pixels, 0, demo.width, 0, 0, demo.width, demo.height)
+        check(pixels.any { it ushr 24 != 0 }) { "Editor demo is empty" }
+        demo.recycle()
+        val uri = EditorPreviewProvider.uri(isolated, 600, 430)
+        val live = isolated.contentResolver.openInputStream(uri).use { android.graphics.BitmapFactory.decodeStream(it) }
+        checkNotNull(live)
+        check(live.width == 1 && live.height == 1 && live.getPixel(0, 0) == 0) {
+            "Non-editor caller received preview pixels"
+        }
+        live.recycle()
+        check(runCatching {
+            isolated.contentResolver.openInputStream(uri.buildUpon().appendQueryParameter("unused", "safe").path("unknown").build())?.close()
+        }.isFailure)
+    }
+
     private fun checkRendering() {
         settings.contentMode = 0
         settings.musicPillEnabled = true
@@ -1221,7 +1270,7 @@ class RegressionInstrumentation : Instrumentation() {
             check(!button.isClickable && !button.hasOnClickListeners())
             repeat(3) {
                 intrinsicViews(true).reapply(isolated, button)
-                check(button.buttonDrawable == null) { "Hidden Samsung surface retained its bitmap" }
+                check(button.buttonDrawable?.intrinsicWidth == 1) { "Live host must load only the transparent preview pixel" }
                 drawWithoutMeasure()
                 check(drawablePixels.all { it ushr 24 == 0 }) { "Hidden drawable surface leaked pixels" }
                 intrinsicViews(false).reapply(isolated, button)

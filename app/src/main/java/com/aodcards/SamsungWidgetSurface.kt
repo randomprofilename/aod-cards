@@ -19,7 +19,7 @@ internal object SamsungWidgetSurface {
     val available: Boolean get() = boundsAnimator != null
 
     fun create(context: Context, settings: SettingsRepository, frame: Bitmap?,
-        widthDp: Int, heightDp: Int): RemoteViews? {
+        widthDp: Int, heightDp: Int, editorPreview: Boolean = false): RemoteViews? {
         val animate = boundsAnimator ?: return null
         val density = context.resources.displayMetrics.density
         val width = (widthDp * density).roundToInt()
@@ -37,7 +37,12 @@ internal object SamsungWidgetSurface {
         }
         if (frame == null) {
             // Remove the bitmap itself, rather than retaining hidden notification pixels.
-            views.setInt(R.id.widget_root, "setButtonDrawable", 0)
+            if (editorPreview) {
+                // Resolved in the host process: DressRoom gets static demo cards,
+                // live SystemUI gets a transparent pixel even while the screen is on.
+                views.setIcon(R.id.widget_root, "setButtonIcon",
+                    Icon.createWithContentUri(EditorPreviewProvider.uri(context, width, height)))
+            } else views.setInt(R.id.widget_root, "setButtonDrawable", 0)
         } else {
             val sized = Bitmap.createScaledBitmap(frame, width, height, true)
             sized.density = Bitmap.DENSITY_NONE
