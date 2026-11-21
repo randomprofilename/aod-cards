@@ -35,6 +35,7 @@ internal object SamsungWidgetSurface {
         if (settings.tapToUnlockEnabled) {
             views.setOnClickPendingIntent(R.id.widget_root, UnlockActivity.pendingIntent(context))
         }
+        LockStarLauncher.bind(context, views)
         if (frame == null) {
             // Remove the bitmap itself, rather than retaining hidden notification pixels.
             if (editorPreview) {

@@ -47,6 +47,7 @@ object WidgetRenderer {
                 if (settings.tapToUnlockEnabled) {
                     setOnClickPendingIntent(R.id.widget_root, UnlockActivity.pendingIntent(context))
                 }
+                LockStarLauncher.bind(context, this)
                 val hidden = screenInteractive && !settings.showWhenScreenOn
                 if (hidden || (plan.cards.isEmpty() && plan.music == null && plan.overflow == 0)) {
                     setImageViewResource(R.id.widget_surface, R.drawable.widget_surface_blank)
@@ -109,6 +110,7 @@ object WidgetRenderer {
         // The entire live widget, including gaps and hidden content, is a tap target.
         // In-app previews must never request an unlock.
         if (unlockOnTap) views.setOnClickPendingIntent(R.id.widget_root, UnlockActivity.pendingIntent(context))
+        if (enableUnlockTap) LockStarLauncher.bind(context, views)
         val hideContent = screenInteractive && !settings.showWhenScreenOn
         // The provider sets explicit root bounds for LockStar. Hidden content is
         // cleared as well as hidden; visibility alone would retain secrets in the host.

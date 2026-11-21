@@ -252,6 +252,7 @@ class RegressionInstrumentation : Instrumentation() {
         val checks: List<Pair<String, () -> Unit>> = listOf(
             "privacy" to ::checkPrivacy,
             "widget unlock interaction" to ::checkWidgetUnlockInteraction,
+            "widget editor interaction" to ::checkWidgetEditorInteraction,
             "refresh queue" to ::checkRefreshQueue,
             "optimized rendering" to ::checkOptimizedRendering,
             "localization" to ::checkLocalization,
@@ -319,6 +320,47 @@ class RegressionInstrumentation : Instrumentation() {
             "Repeated taps must reuse the pending unlock instead of creating competing requests"
         }
         check(info.flags and android.content.pm.ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS != 0)
+    }
+
+    private fun checkWidgetEditorInteraction() {
+        val probe = android.widget.RemoteViews(isolated.packageName, R.layout.widget_cards_intrinsic)
+        val supported = LockStarLauncher.bind(isolated, probe)
+        val lockStarInstalled = runCatching {
+            isolated.packageManager.getPackageInfo("com.samsung.systemui.lockstar", 0)
+        }.isSuccess
+        if (android.os.Build.MANUFACTURER.equals("samsung", ignoreCase = true) && lockStarInstalled) {
+            checkNotNull(LockStarLauncher.intent(isolated)) { "Installed LockStar is not accessible" }
+            check(supported) { "Samsung long-press action could not be bound" }
+        }
+        val previous = settings.tapToUnlockEnabled
+        try {
+            for (tap in listOf(false, true)) {
+                settings.tapToUnlockEnabled = tap
+                for (fixed in listOf(false, true)) for (samsung in listOf(false, true)) {
+                    for (interactive in listOf(false, true)) {
+                        val plan = WidgetRenderModel.build(emptyList(), settings, null, 398, 289, isolated)
+                        val views = WidgetRenderer.createLiveViews(isolated, settings, 1f, 398, 289,
+                            interactive, plan, useFixedSurface = fixed, useSamsungBoundsSurface = samsung)
+                        // Exercise the serialized action received by an external widget host.
+                        val parcel = android.os.Parcel.obtain()
+                        val copy = try {
+                            views.writeToParcel(parcel, 0)
+                            parcel.setDataPosition(0)
+                            android.widget.RemoteViews.CREATOR.createFromParcel(parcel)
+                        } finally { parcel.recycle() }
+                        val root = copy.apply(isolated, FrameLayout(isolated))
+                        check(root.isLongClickable == supported && root.hasOnLongClickListeners() == supported) {
+                            "Editor gesture missing: tap=$tap fixed=$fixed samsung=$samsung interactive=$interactive"
+                        }
+                        check(root.hasOnClickListeners() == tap) { "Editor gesture changed short-tap behavior" }
+                    }
+                }
+            }
+            val preview = EditorPreviewProvider.demoViews(isolated, 398, 289).apply(isolated, FrameLayout(isolated))
+            check(!preview.isLongClickable && !preview.hasOnLongClickListeners()) {
+                "Preview must not open the lock-screen editor"
+            }
+        } finally { settings.tapToUnlockEnabled = previous }
     }
 
     private fun checkPrivacy() {

@@ -45,6 +45,7 @@ You’ll need a Samsung device running **Android 16 (API 36) or later**, plus **
 
 - **Widget dimming.** LockStar automatically dims the widget on Always On Display. This behavior cannot be adjusted in AOD Cards.
 - **Touch gestures over the widget.** Android cannot pass touches through the widget to the lock screen, so **Unlock on tap** requests the unlock from the widget itself. The unlock animation may look a little choppy because of this.
+- **Hold to edit.** On supported Samsung firmware, long-press the widget to open LockStar, just like the app's **Open LockStar** button. This also works with **Unlock on tap** disabled.
 - **Blank widget after folding.** Samsung foldables use a compatibility rendering workaround for this LockStar issue. It has been tested on the Galaxy Z Fold8; behavior may vary with firmware and LockStar versions. [LockStar bug report](https://community.samsung.com/kr/conversations/z/%EB%9D%BD%EC%8A%A4%ED%83%80-%EC%9E%A0%EA%B8%88%ED%99%94%EB%A9%B4-%EC%9C%84%EC%A0%AF-%EC%82%AC%EB%9D%BC%EC%A7%80%EB%8A%94-%ED%98%84%EC%83%81/r1_39283450?commentId=r1_39298889)
 - **Google Play Protect warning.** Google Play Protect may flag the provided APK as dangerous. If you don’t trust the provided APK, you can [build it from source](#build).
 

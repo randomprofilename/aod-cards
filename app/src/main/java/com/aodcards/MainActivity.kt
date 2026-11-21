@@ -810,8 +810,7 @@ class MainActivity : Activity() {
     }
 
     private fun openLockStar() {
-        val lockStar = Intent("com.samsung.systemui.lockstar.action.SETTINGS")
-            .setPackage("com.samsung.systemui.lockstar")
+        val lockStar = LockStarLauncher.settingsIntent()
         try {
             startActivity(lockStar)
             return
