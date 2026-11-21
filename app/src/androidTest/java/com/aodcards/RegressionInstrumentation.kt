@@ -999,9 +999,93 @@ class RegressionInstrumentation : Instrumentation() {
         settings.musicPillEnabled = true
         settings.ongoingMode = 0
         val cards = (1..14).map { card(it.toString()).copy(title = "Card $it", postTime = 0) }
-        val music = MusicTrack("com.example.player", "Track", "Artist", null, true)
+        val music = MusicTrack("com.example.player", "Track", "Artist", null)
         fun views(list: List<NotificationCard>, track: MusicTrack? = null, interactive: Boolean = false) =
             WidgetRenderer.createViews(isolated, list, settings, track, 1f, 360, 4000, interactive)
+        val iconColors = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
+        for (color in listOf(android.graphics.Color.RED, android.graphics.Color.GREEN, android.graphics.Color.BLUE)) {
+            iconColors.eraseColor(color)
+            val tint = MusicCardColor.fromIcon(iconColors)
+            val hsv = FloatArray(3)
+            android.graphics.Color.colorToHSV(tint, hsv)
+            val original = FloatArray(3)
+            android.graphics.Color.colorToHSV(color, original)
+            check(kotlin.math.abs(hsv[0] - original[0]) < 2f)
+            check(hsv[2] in .30f.. .63f && hsv[1] in .64f.. .91f)
+            check(android.graphics.Color.alpha(tint) == 255)
+            fun luminance(channel: Int): Double {
+                val value = channel / 255.0
+                return if (value <= .04045) value / 12.92 else Math.pow((value + .055) / 1.055, 2.4)
+            }
+            val luma = .2126 * luminance(android.graphics.Color.red(tint)) +
+                .7152 * luminance(android.graphics.Color.green(tint)) +
+                .0722 * luminance(android.graphics.Color.blue(tint))
+            val subtitleLuma = .2126 * luminance(208) + .7152 * luminance(208) + .0722 * luminance(214)
+            check((subtitleLuma + .05) / (luma + .05) >= 4.5) { "Music tint is too light for subtitle" }
+        }
+        iconColors.eraseColor(android.graphics.Color.WHITE)
+        check(MusicCardColor.fromIcon(iconColors) == 0xD9171719.toInt())
+        iconColors.recycle()
+        val squareArt = Bitmap.createBitmap(256, 128, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(android.graphics.Color.MAGENTA)
+        }
+        val roundedArt = WidgetRows.roundedMusicArtwork(squareArt)
+        check(roundedArt.width == roundedArt.height)
+        check(roundedArt.getPixel(0, 0) == android.graphics.Color.TRANSPARENT)
+        check(roundedArt.getPixel(64, 64) == android.graphics.Color.MAGENTA)
+        squareArt.recycle()
+        roundedArt.recycle()
+        // Pausing removes the row and its reserved space; resuming restores it.
+        val mediaHost = android.appwidget.AppWidgetHostView(isolated)
+        for (paused in listOf(false, true, false)) {
+            val track = music.copy(paused = paused)
+            val model = WidgetRenderModel.build(cards, settings, track, 360, 4000, isolated)
+            check((model.music == null) == paused)
+            mediaHost.updateAppWidget(views(cards, track))
+            check((mediaHost.findViewById<View>(R.id.music_pill).visibility == View.GONE) == paused)
+            check(NotificationPrivacy(false, true, true).music(track, settings) ==
+                if (paused) null else track)
+        }
+        val mediaNotification = android.app.Notification.Builder(isolated, "regression")
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setCategory(android.app.Notification.CATEGORY_TRANSPORT).build()
+        val listener = NotificationListener()
+        check(listener.hideMediaNotification(mediaNotification, true))
+        check(!listener.hideMediaNotification(mediaNotification, false))
+        check(!listener.hideMediaNotification(android.app.Notification(), true))
+        // Music and ordinary cards must share both horizontal edges at each size.
+        for (compact in listOf(false, true)) {
+            settings.compactMode = compact
+            for (size in 0..2) {
+                val scale = WidgetRows.scaleFactor(size)
+                val widthDp = if (compact) 280 else 398
+                val widthPx = (widthDp * isolated.resources.displayMetrics.density).toInt()
+                val geometry = WidgetRenderer.createViews(isolated, cards.take(1), settings,
+                    music, scale, widthDp, 289).apply(isolated, FrameLayout(isolated))
+                geometry.measure(View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(759, View.MeasureSpec.EXACTLY))
+                geometry.layout(0, 0, widthPx, 759)
+                val pill = geometry.findViewById<View>(R.id.music_pill)
+                val shell = geometry.findViewById<View>(R.id.card_shell)
+                check(pill.width == shell.width && pill.left == shell.left) {
+                    "Music width differs from notification width: compact=$compact size=$size"
+                }
+                fun start(id: Int): Int {
+                    val view = geometry.findViewById<View>(id)
+                    val bounds = android.graphics.Rect()
+                    view.getDrawingRect(bounds)
+                    (geometry as android.view.ViewGroup).offsetDescendantRectToMyCoords(view, bounds)
+                    return bounds.left
+                }
+                check(start(R.id.music_placeholder) == start(R.id.avatar_main)) {
+                    "Music artwork does not align with notification icon"
+                }
+                check(start(R.id.music_title) == start(R.id.app_name)) {
+                    "Music title does not align with notification text"
+                }
+            }
+        }
+        settings.compactMode = false
         // Exercise host updates and geometry, not just direct RemoteViews.reapply.
         settings.showWhenScreenOn = false
         for (tap in listOf(false, true)) {
@@ -1174,7 +1258,7 @@ class RegressionInstrumentation : Instrumentation() {
         check(content.getChildAt(0).id == R.id.widget_music_container) { "Music must appear above notifications" }
         check(root.findViewById<android.view.ViewGroup>(R.id.widget_notification_container).childCount == WidgetRows.MAX_VISIBLE_CARDS)
         check(root.findViewById<android.view.ViewGroup>(R.id.widget_music_container).childCount == 1)
-        check(root.findViewById<TextView>(R.id.music_artist).text.startsWith(isolated.getString(R.string.music_paused)))
+        check(root.findViewById<TextView>(R.id.music_artist).text.toString() == music.artist)
         check(root.findViewById<TextView>(R.id.widget_overflow_center).text.toString() == "+2")
         val rows = root.findViewById<android.view.ViewGroup>(R.id.widget_notification_container)
         fun checkRows(expected: List<NotificationCard>) {

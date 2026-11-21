@@ -124,7 +124,7 @@ object WidgetRenderer {
             // Reuse positions without hashing notification keys. Each row fully binds its state.
             views.addStableView(R.id.widget_notification_container, row, index)
         }
-        WidgetRows.applyMusic(context, views, if (hideContent) null else plan.music, scale)
+        WidgetRows.applyMusic(context, views, if (hideContent) null else plan.music, scale, width)
         val overflow = if (hideContent) 0 else plan.overflow
         val showOverflow = overflow > 0
         views.setViewVisibility(R.id.widget_overflow_row, when {

@@ -324,7 +324,7 @@ class NotificationListener : NotificationListenerService() {
             val blockedPackages = prefs.blockedPackages
             val parsed = active.asSequence()
                 .filterNot { sbn ->
-                    music != null && sbn.packageName == music.packageName && isMediaNotification(sbn.notification)
+                    hideMediaNotification(sbn.notification, prefs.musicPillEnabled)
                 }
                 .mapIndexedNotNull { index, sbn ->
                     if (token != refreshQueue.revision || sbn.user != android.os.Process.myUserHandle()) return@mapIndexedNotNull null
@@ -414,6 +414,11 @@ class NotificationListener : NotificationListenerService() {
             writer.println("widget=$id size=${width}x$height planCards=${plan.cards.size} planMusic=${plan.music != null} overflow=${plan.overflow}")
         }
     }
+
+    // The music feature owns transport notifications even while its row is hidden
+    // on pause. Otherwise the same track falls back to an ordinary notification.
+    internal fun hideMediaNotification(notification: Notification, musicEnabled: Boolean): Boolean =
+        musicEnabled && isMediaNotification(notification)
 
     private fun isMediaNotification(notification: Notification): Boolean {
         if (notification.category == Notification.CATEGORY_TRANSPORT) return true

@@ -29,7 +29,7 @@ object WidgetRows {
         else views.setImageViewBitmap(id, bitmap)
     }
 
-    fun applyMusic(context: Context, views: RemoteViews, track: MusicTrack?, scale: Float = 1f) {
+    fun applyMusic(context: Context, views: RemoteViews, track: MusicTrack?, scale: Float = 1f, widthDp: Int = 360) {
         val visible = track != null
         views.setViewVisibility(R.id.music_pill, if (visible) android.view.View.VISIBLE else android.view.View.GONE)
         if (track == null) {
@@ -40,11 +40,33 @@ object WidgetRows {
         }
         views.setTextViewText(R.id.music_title, track.title)
         views.setTextViewText(R.id.music_artist, musicSubtitle(context, track))
+        views.setTextColor(R.id.music_artist, 0xFFD0D0D6.toInt())
         val hasArtwork = track.artwork != null
         views.setViewVisibility(R.id.music_art, if (hasArtwork) android.view.View.VISIBLE else android.view.View.GONE)
         views.setViewVisibility(R.id.music_placeholder, if (hasArtwork) android.view.View.GONE else android.view.View.VISIBLE)
-        setImage(views, R.id.music_art, track.artwork)
-        applyMusicScale(context = context, views = views, scale = scale)
+        setImage(views, R.id.music_art, track.artwork?.let(::roundedMusicArtwork))
+        applyMusicScale(context = context, views = views, scale = scale, widthDp = widthDp)
+        views.setColorStateList(R.id.music_pill, "setBackgroundTintList",
+            android.content.res.ColorStateList.valueOf(MusicCardColor.forPackage(context, track.packageName)))
+    }
+
+    // clipToOutline is not applied by the software Canvas used for the Samsung
+    // surface. Bake the same 10dp corners of the 44dp artwork into its pixels.
+    internal fun roundedMusicArtwork(source: Bitmap): Bitmap {
+        val side = 128
+        val shader = android.graphics.BitmapShader(source,
+            android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP)
+        val scale = maxOf(side.toFloat() / source.width, side.toFloat() / source.height)
+        shader.setLocalMatrix(android.graphics.Matrix().apply {
+            setScale(scale, scale)
+            postTranslate((side - source.width * scale) / 2f, (side - source.height * scale) / 2f)
+        })
+        return Bitmap.createBitmap(side, side, Bitmap.Config.ARGB_8888).apply {
+            val radius = side * 10f / 44f
+            Canvas(this).drawRoundRect(0f, 0f, side.toFloat(), side.toFloat(), radius, radius,
+                android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or
+                    android.graphics.Paint.FILTER_BITMAP_FLAG).apply { this.shader = shader })
+        }
     }
 
     fun apply(context: Context, views: RemoteViews, card: NotificationCard, ids: WidgetRowIds, scale: Float = 1f, widthDp: Int = 360) {
@@ -256,20 +278,29 @@ object WidgetRows {
         size(ids.image, height = 64f); margin(ids.image, RemoteViews.MARGIN_TOP, 4f)
     }
 
-    private fun applyMusicScale(context: Context?, views: RemoteViews, scale: Float) {
+    private fun applyMusicScale(context: Context?, views: RemoteViews, scale: Float, widthDp: Int) {
         fun text(id: Int, size: Float) = views.setTextViewTextSize(id, TypedValue.COMPLEX_UNIT_SP, size * scale)
         val density = context?.resources?.displayMetrics?.density ?: 1f
         fun px(value: Float) = (value * scale * density + .5f).toInt()
-        views.setViewPadding(R.id.music_pill, px(10f), px(6f), px(12f), px(6f))
+        val compact = widthDp < 300
+        val horizontalPad = px(if (compact) 10f else 14f)
+        views.setViewPadding(R.id.music_pill, horizontalPad, px(6f), horizontalPad, px(6f))
         views.setInt(R.id.music_pill, "setBackgroundResource", surfaceForScale(scale))
         views.setInt(R.id.music_pill, "setMinimumHeight", px(58f))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             views.setViewLayoutHeight(R.id.music_pill, android.view.ViewGroup.LayoutParams.WRAP_CONTENT.toFloat(), TypedValue.COMPLEX_UNIT_PX)
-            views.setViewLayoutWidth(R.id.music_art_container, 44f * scale, TypedValue.COMPLEX_UNIT_DIP)
-            views.setViewLayoutHeight(R.id.music_art_container, 44f * scale, TypedValue.COMPLEX_UNIT_DIP)
+            views.setViewLayoutWidth(R.id.music_art_container, 46f * scale, TypedValue.COMPLEX_UNIT_DIP)
+            views.setViewLayoutHeight(R.id.music_art_container, 46f * scale, TypedValue.COMPLEX_UNIT_DIP)
+            for (id in listOf(R.id.music_art, R.id.music_placeholder)) {
+                views.setViewLayoutWidth(id, 44f * scale, TypedValue.COMPLEX_UNIT_DIP)
+                views.setViewLayoutHeight(id, 44f * scale, TypedValue.COMPLEX_UNIT_DIP)
+            }
             views.setViewLayoutWidth(R.id.music_activity, 24f * scale, TypedValue.COMPLEX_UNIT_DIP)
             views.setViewLayoutHeight(R.id.music_activity, 24f * scale, TypedValue.COMPLEX_UNIT_DIP)
-            views.setViewLayoutMargin(R.id.music_info, RemoteViews.MARGIN_START, 10f * scale, TypedValue.COMPLEX_UNIT_DIP)
+            val inset = if (widthDp < 300) 0f else 14f * scale
+            views.setViewLayoutMargin(R.id.music_pill, RemoteViews.MARGIN_START, inset, TypedValue.COMPLEX_UNIT_DIP)
+            views.setViewLayoutMargin(R.id.music_pill, RemoteViews.MARGIN_END, inset, TypedValue.COMPLEX_UNIT_DIP)
+            views.setViewLayoutMargin(R.id.music_info, RemoteViews.MARGIN_START, (if (compact) 9f else 14f) * scale, TypedValue.COMPLEX_UNIT_DIP)
             views.setViewLayoutMargin(R.id.music_pill, RemoteViews.MARGIN_BOTTOM, 5f * scale, TypedValue.COMPLEX_UNIT_DIP)
         }
         text(R.id.music_title, 14f); text(R.id.music_artist, 12f); text(R.id.music_placeholder, 22f); text(R.id.music_activity, 13f)
