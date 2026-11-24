@@ -23,6 +23,8 @@ class RegressionInstrumentation : Instrumentation() {
     private var liveSnapshotOnly = false
     private var customSettingsOnly = false
     private var wakeTestWindow = false
+    private var hostProbeOnly = false
+    private var hostProbeKind = "layout"
 
     override fun onCreate(arguments: Bundle?) {
         touchOnly = arguments?.getString("touch_only") == "true"
@@ -31,6 +33,8 @@ class RegressionInstrumentation : Instrumentation() {
         customSettingsOnly = arguments?.getString("custom_settings_only") == "true"
         pickerOnly = arguments?.getString("picker_only") == "true"
         wakeTestWindow = arguments?.getString("wake_test_window") == "true"
+        hostProbeOnly = arguments?.getString("host_probe_only") == "true"
+        hostProbeKind = arguments?.getString("host_probe_kind") ?: "layout"
         super.onCreate(arguments)
         start()
     }
@@ -54,6 +58,11 @@ class RegressionInstrumentation : Instrumentation() {
     override fun onStart() {
         val result = Bundle()
         try {
+            if (hostProbeOnly) {
+                result.putString("stream", SamsungHostProbe.run(this, targetContext, hostProbeKind))
+                finish(Activity.RESULT_OK, result)
+                return
+            }
             isolated = object : ContextWrapper(targetContext) {
                 override fun getSharedPreferences(name: String, mode: Int) =
                     super.getSharedPreferences("regression_$name", mode)
@@ -252,6 +261,7 @@ class RegressionInstrumentation : Instrumentation() {
             "privacy" to ::checkPrivacy,
             "widget unlock interaction" to ::checkWidgetUnlockInteraction,
             "LockStar touch passthrough" to { TouchPassthroughRegression.check(isolated) },
+            "widget editor interaction" to ::checkWidgetEditorInteraction,
             "refresh queue" to ::checkRefreshQueue,
             "optimized rendering" to ::checkOptimizedRendering,
             "localization" to ::checkLocalization,
@@ -261,6 +271,7 @@ class RegressionInstrumentation : Instrumentation() {
             "grouping" to ::checkGrouping,
             "grouped layout" to ::checkGroupedCardLayout,
             "conversation tail" to ::checkConversationTail,
+            "editor preview" to ::checkEditorPreview,
             "rendering" to ::checkRendering,
             "avatars" to ::checkAvatars,
             "packing" to ::checkPacking,
@@ -318,6 +329,47 @@ class RegressionInstrumentation : Instrumentation() {
             "Repeated taps must reuse the pending unlock instead of creating competing requests"
         }
         check(info.flags and android.content.pm.ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS != 0)
+    }
+
+    private fun checkWidgetEditorInteraction() {
+        val probe = android.widget.RemoteViews(isolated.packageName, R.layout.widget_cards_intrinsic)
+        val supported = LockStarLauncher.bind(isolated, probe)
+        val lockStarInstalled = runCatching {
+            isolated.packageManager.getPackageInfo("com.samsung.systemui.lockstar", 0)
+        }.isSuccess
+        if (android.os.Build.MANUFACTURER.equals("samsung", ignoreCase = true) && lockStarInstalled) {
+            checkNotNull(LockStarLauncher.intent(isolated)) { "Installed LockStar is not accessible" }
+            check(supported) { "Samsung long-press action could not be bound" }
+        }
+        val previous = settings.tapToUnlockEnabled
+        try {
+            for (tap in listOf(false, true)) {
+                settings.tapToUnlockEnabled = tap
+                for (fixed in listOf(false, true)) for (samsung in listOf(false, true)) {
+                    for (interactive in listOf(false, true)) {
+                        val plan = WidgetRenderModel.build(emptyList(), settings, null, 398, 289, isolated)
+                        val views = WidgetRenderer.createLiveViews(isolated, settings, 1f, 398, 289,
+                            interactive, plan, useFixedSurface = fixed, useSamsungBoundsSurface = samsung)
+                        // Exercise the serialized action received by an external widget host.
+                        val parcel = android.os.Parcel.obtain()
+                        val copy = try {
+                            views.writeToParcel(parcel, 0)
+                            parcel.setDataPosition(0)
+                            android.widget.RemoteViews.CREATOR.createFromParcel(parcel)
+                        } finally { parcel.recycle() }
+                        val root = copy.apply(isolated, FrameLayout(isolated))
+                        check(root.isLongClickable == supported && root.hasOnLongClickListeners() == supported) {
+                            "Editor gesture missing: tap=$tap fixed=$fixed samsung=$samsung interactive=$interactive"
+                        }
+                        check(root.hasOnClickListeners() == tap) { "Editor gesture changed short-tap behavior" }
+                    }
+                }
+            }
+            val preview = EditorPreviewProvider.demoViews(isolated, 398, 289).apply(isolated, FrameLayout(isolated))
+            check(!preview.isLongClickable && !preview.hasOnLongClickListeners()) {
+                "Preview must not open the lock-screen editor"
+            }
+        } finally { settings.tapToUnlockEnabled = previous }
     }
 
     private fun checkPrivacy() {
@@ -994,14 +1046,146 @@ class RegressionInstrumentation : Instrumentation() {
         }
     }
 
+    private fun checkEditorPreview() {
+        check(!EditorPreviewProvider.isEditorCaller(isolated, android.os.Process.myUid()))
+        val editorUid = runCatching {
+            isolated.packageManager.getApplicationInfo("com.samsung.android.app.dressroom", 0).uid
+        }.getOrNull()
+        if (editorUid != null) check(EditorPreviewProvider.isEditorCaller(isolated, editorUid))
+        else check(!EditorPreviewProvider.isEditorCaller(isolated, 1000))
+        val oldPosition = settings.overflowBadgePosition
+        val oldMode = settings.contentMode
+        val oldBlocked = settings.blockedPackages
+        try {
+            settings.contentMode = 0
+            settings.blockedPackages = emptySet()
+            val badges = listOf(R.id.widget_overflow_left, R.id.widget_overflow_center, R.id.widget_overflow_right)
+            for (position in 0..2) {
+                settings.overflowBadgePosition = position
+                val small = EditorPreviewProvider.demoViews(isolated, 398, 160).apply(isolated, FrameLayout(isolated))
+                check(small.findViewById<View>(R.id.widget_overflow_row).visibility == View.VISIBLE)
+                for ((index, id) in badges.withIndex()) {
+                    val badge = small.findViewById<TextView>(id)
+                    check((badge.visibility == View.VISIBLE) == (index == position))
+                    if (index == position) check(badge.text.startsWith("+"))
+                }
+                val large = EditorPreviewProvider.demoViews(isolated, 398, 2000).apply(isolated, FrameLayout(isolated))
+                check(large.findViewById<View>(R.id.widget_overflow_row).visibility == View.GONE)
+            }
+        } finally {
+            settings.overflowBadgePosition = oldPosition
+            settings.contentMode = oldMode
+            settings.blockedPackages = oldBlocked
+        }
+        val demo = EditorPreviewProvider.render(isolated, 600, 430, true)
+        val pixels = IntArray(demo.width * demo.height)
+        demo.getPixels(pixels, 0, demo.width, 0, 0, demo.width, demo.height)
+        check(pixels.any { it ushr 24 != 0 }) { "Editor demo is empty" }
+        demo.recycle()
+        val uri = EditorPreviewProvider.uri(isolated, 600, 430)
+        val live = isolated.contentResolver.openInputStream(uri).use { android.graphics.BitmapFactory.decodeStream(it) }
+        checkNotNull(live)
+        check(live.width == 1 && live.height == 1 && live.getPixel(0, 0) == 0) {
+            "Non-editor caller received preview pixels"
+        }
+        live.recycle()
+        check(runCatching {
+            isolated.contentResolver.openInputStream(uri.buildUpon().appendQueryParameter("unused", "safe").path("unknown").build())?.close()
+        }.isFailure)
+    }
+
     private fun checkRendering() {
         settings.contentMode = 0
         settings.musicPillEnabled = true
         settings.ongoingMode = 0
         val cards = (1..14).map { card(it.toString()).copy(title = "Card $it", postTime = 0) }
-        val music = MusicTrack("com.example.player", "Track", "Artist", null, true)
+        val music = MusicTrack("com.example.player", "Track", "Artist", null)
         fun views(list: List<NotificationCard>, track: MusicTrack? = null, interactive: Boolean = false) =
             WidgetRenderer.createViews(isolated, list, settings, track, 1f, 360, 4000, interactive)
+        val iconColors = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
+        for (color in listOf(android.graphics.Color.RED, android.graphics.Color.GREEN, android.graphics.Color.BLUE)) {
+            iconColors.eraseColor(color)
+            val tint = MusicCardColor.fromIcon(iconColors)
+            val hsv = FloatArray(3)
+            android.graphics.Color.colorToHSV(tint, hsv)
+            val original = FloatArray(3)
+            android.graphics.Color.colorToHSV(color, original)
+            check(kotlin.math.abs(hsv[0] - original[0]) < 2f)
+            check(hsv[2] in .30f.. .63f && hsv[1] in .64f.. .91f)
+            check(android.graphics.Color.alpha(tint) == 255)
+            fun luminance(channel: Int): Double {
+                val value = channel / 255.0
+                return if (value <= .04045) value / 12.92 else Math.pow((value + .055) / 1.055, 2.4)
+            }
+            val luma = .2126 * luminance(android.graphics.Color.red(tint)) +
+                .7152 * luminance(android.graphics.Color.green(tint)) +
+                .0722 * luminance(android.graphics.Color.blue(tint))
+            val subtitleLuma = .2126 * luminance(208) + .7152 * luminance(208) + .0722 * luminance(214)
+            check((subtitleLuma + .05) / (luma + .05) >= 4.5) { "Music tint is too light for subtitle" }
+        }
+        iconColors.eraseColor(android.graphics.Color.WHITE)
+        check(MusicCardColor.fromIcon(iconColors) == 0xD9171719.toInt())
+        iconColors.recycle()
+        val squareArt = Bitmap.createBitmap(256, 128, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(android.graphics.Color.MAGENTA)
+        }
+        val roundedArt = WidgetRows.roundedMusicArtwork(squareArt)
+        check(roundedArt.width == roundedArt.height)
+        check(roundedArt.getPixel(0, 0) == android.graphics.Color.TRANSPARENT)
+        check(roundedArt.getPixel(64, 64) == android.graphics.Color.MAGENTA)
+        squareArt.recycle()
+        roundedArt.recycle()
+        // Pausing removes the row and its reserved space; resuming restores it.
+        val mediaHost = android.appwidget.AppWidgetHostView(isolated)
+        for (paused in listOf(false, true, false)) {
+            val track = music.copy(paused = paused)
+            val model = WidgetRenderModel.build(cards, settings, track, 360, 4000, isolated)
+            check((model.music == null) == paused)
+            mediaHost.updateAppWidget(views(cards, track))
+            check((mediaHost.findViewById<View>(R.id.music_pill).visibility == View.GONE) == paused)
+            check(NotificationPrivacy(false, true, true).music(track, settings) ==
+                if (paused) null else track)
+        }
+        val mediaNotification = android.app.Notification.Builder(isolated, "regression")
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setCategory(android.app.Notification.CATEGORY_TRANSPORT).build()
+        val listener = NotificationListener()
+        check(listener.hideMediaNotification(mediaNotification, true))
+        check(!listener.hideMediaNotification(mediaNotification, false))
+        check(!listener.hideMediaNotification(android.app.Notification(), true))
+        // Music and ordinary cards must share both horizontal edges at each size.
+        for (compact in listOf(false, true)) {
+            settings.compactMode = compact
+            for (size in 0..2) {
+                val scale = WidgetRows.scaleFactor(size)
+                val widthDp = if (compact) 280 else 398
+                val widthPx = (widthDp * isolated.resources.displayMetrics.density).toInt()
+                val geometry = WidgetRenderer.createViews(isolated, cards.take(1), settings,
+                    music, scale, widthDp, 289).apply(isolated, FrameLayout(isolated))
+                geometry.measure(View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(759, View.MeasureSpec.EXACTLY))
+                geometry.layout(0, 0, widthPx, 759)
+                val pill = geometry.findViewById<View>(R.id.music_pill)
+                val shell = geometry.findViewById<View>(R.id.card_shell)
+                check(pill.width == shell.width && pill.left == shell.left) {
+                    "Music width differs from notification width: compact=$compact size=$size"
+                }
+                fun start(id: Int): Int {
+                    val view = geometry.findViewById<View>(id)
+                    val bounds = android.graphics.Rect()
+                    view.getDrawingRect(bounds)
+                    (geometry as android.view.ViewGroup).offsetDescendantRectToMyCoords(view, bounds)
+                    return bounds.left
+                }
+                check(start(R.id.music_placeholder) == start(R.id.avatar_main)) {
+                    "Music artwork does not align with notification icon"
+                }
+                check(start(R.id.music_title) == start(R.id.app_name)) {
+                    "Music title does not align with notification text"
+                }
+            }
+        }
+        settings.compactMode = false
         // Exercise host updates and geometry, not just direct RemoteViews.reapply.
         settings.showWhenScreenOn = false
         for (tap in listOf(false, true)) {
@@ -1040,11 +1224,30 @@ class RegressionInstrumentation : Instrumentation() {
             settings.showWhenScreenOn = false
         }
         settings.tapToUnlockEnabled = false
+        // Reproduce the observed missing child measurement without assuming a
+        // Samsung fold lifecycle: onLayout must repair it via the size variant.
+        val recoveryHost = object : android.appwidget.AppWidgetHostView(isolated) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                setMeasuredDimension(View.MeasureSpec.getSize(widthMeasureSpec),
+                    View.MeasureSpec.getSize(heightMeasureSpec))
+            }
+        }
+        val recoveryPlan = WidgetRenderModel.build(cards, settings, music, 398, 289, isolated)
+        recoveryHost.updateAppWidget(WidgetRenderer.createLiveViews(isolated, settings, 1f,
+            398, 289, false, recoveryPlan, useFixedSurface = true, useSamsungBoundsSurface = false))
+        val recoveryWidth = (398 * isolated.resources.displayMetrics.density).toInt()
+        val recoveryHeight = (289 * isolated.resources.displayMetrics.density).toInt()
+        recoveryHost.measure(View.MeasureSpec.makeMeasureSpec(recoveryWidth, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(recoveryHeight, View.MeasureSpec.EXACTLY))
+        check(recoveryHost.findViewById<View>(R.id.widget_root).measuredWidth == 0)
+        recoveryHost.layout(0, 0, recoveryWidth, recoveryHeight)
+        check(recoveryHost.findViewById<View>(R.id.widget_root).width > 0)
+        check(recoveryHost.findViewById<View>(R.id.widget_surface).height > 0)
         val surfaceHost = android.appwidget.AppWidgetHostView(isolated)
         val surfacePlan = WidgetRenderModel.build(cards, settings, music, 398, 289, isolated)
         fun updateSurface(interactive: Boolean) = surfaceHost.updateAppWidget(
             WidgetRenderer.createLiveViews(isolated, settings, 1f, 398, 289, interactive, surfacePlan,
-                useFixedSurface = true))
+                useFixedSurface = true, useSamsungBoundsSurface = false))
         updateSurface(true)
         surfaceHost.measure(View.MeasureSpec.makeMeasureSpec(398, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(289, View.MeasureSpec.EXACTLY))
@@ -1070,12 +1273,92 @@ class RegressionInstrumentation : Instrumentation() {
             check(frame.getPixel(frame.width / 2, frame.height / 5) == android.graphics.Color.TRANSPARENT)
         }
         frame.recycle()
+        if (SamsungWidgetSurface.available) {
+            // A new editor host has no size options and a blank screen-on frame.
+            // It must negotiate the normal size even with wrap-content/AT_MOST specs.
+            fun checkNewHiddenSurface(width: Int, height: Int) {
+                val freshHost = android.appwidget.AppWidgetHostView(isolated).apply { setPadding(0, 0, 0, 0) }
+                freshHost.updateAppWidget(checkNotNull(SamsungWidgetSurface.create(isolated, settings, null, width, height)))
+                val limit = (700 * isolated.resources.displayMetrics.density + .5f).toInt()
+                freshHost.measure(View.MeasureSpec.makeMeasureSpec(limit, View.MeasureSpec.AT_MOST),
+                    View.MeasureSpec.makeMeasureSpec(limit, View.MeasureSpec.AT_MOST))
+                val expectedWidth = (width * isolated.resources.displayMetrics.density + .5f).toInt()
+                val expectedHeight = (height * isolated.resources.displayMetrics.density + .5f).toInt()
+                check(freshHost.measuredWidth == expectedWidth && freshHost.measuredHeight == expectedHeight) {
+                    "New hidden surface collapsed: ${freshHost.measuredWidth}x${freshHost.measuredHeight}, expected ${expectedWidth}x${expectedHeight}"
+                }
+                check((freshHost.findViewById<View>(R.id.widget_root) as android.widget.CheckBox).buttonDrawable == null)
+            }
+            val initialSize = WidgetRenderer.sizeFor(android.os.Bundle().apply {
+                putInt(android.appwidget.AppWidgetManager.OPTION_APPWIDGET_HOST_CATEGORY, 1)
+            })
+            val initialPlaceholder = android.widget.RemoteViews(isolated.packageName,
+                R.layout.widget_cards_intrinsic).apply(isolated, FrameLayout(isolated))
+            val initialLimit = (700 * isolated.resources.displayMetrics.density + .5f).toInt()
+            initialPlaceholder.measure(View.MeasureSpec.makeMeasureSpec(initialLimit, View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(initialLimit, View.MeasureSpec.AT_MOST))
+            check(initialPlaceholder.measuredWidth == (initialSize.first * isolated.resources.displayMetrics.density + .5f).toInt())
+            check(initialPlaceholder.measuredHeight == (initialSize.second * isolated.resources.displayMetrics.density + .5f).toInt())
+            checkNewHiddenSurface(initialSize.first, initialSize.second)
+            checkNewHiddenSurface(390, 292)
+            // Exercise the actual drawable path without ANY measure/layout call.
+            // This catches ImageView's missing-frame failure, rather than assuming a
+            // normal host traversal is proof of recovery in the affected SystemUI.
+            fun intrinsicViews(interactive: Boolean) = WidgetRenderer.createLiveViews(isolated,
+                settings, 1f, 398, 289, interactive, surfacePlan, useFixedSurface = true)
+            val button = intrinsicViews(false).apply(isolated, FrameLayout(isolated)) as android.widget.CheckBox
+            val drawableFrame = Bitmap.createBitmap(recoveryWidth, recoveryHeight, Bitmap.Config.ARGB_8888)
+            val drawablePixels = IntArray(drawableFrame.width * drawableFrame.height)
+            fun drawWithoutMeasure() {
+                check(button.measuredWidth == 0 && button.measuredHeight == 0)
+                button.left = 0; button.top = 0
+                button.right = SamsungWidgetSurface.VIEWPORT; button.bottom = SamsungWidgetSurface.VIEWPORT
+                drawableFrame.eraseColor(android.graphics.Color.TRANSPARENT)
+                button.draw(Canvas(drawableFrame))
+                drawableFrame.getPixels(drawablePixels, 0, drawableFrame.width,
+                    0, 0, drawableFrame.width, drawableFrame.height)
+            }
+            check(!button.isClickable && !button.hasOnClickListeners())
+            repeat(3) {
+                intrinsicViews(true).reapply(isolated, button)
+                check(button.buttonDrawable?.intrinsicWidth == 1) { "Live host must load only the transparent preview pixel" }
+                drawWithoutMeasure()
+                check(drawablePixels.all { it ushr 24 == 0 }) { "Hidden drawable surface leaked pixels" }
+                intrinsicViews(false).reapply(isolated, button)
+                val iconDrawable = checkNotNull(button.buttonDrawable)
+                check(iconDrawable.intrinsicWidth == (398 * isolated.resources.displayMetrics.density + .5f).toInt())
+                check(iconDrawable.intrinsicHeight == (289 * isolated.resources.displayMetrics.density + .5f).toInt())
+                drawWithoutMeasure()
+                check(drawablePixels.any { it ushr 24 != 0 }) { "Drawable surface cannot draw without a measure pass" }
+            }
+            val rtlConfig = android.content.res.Configuration(isolated.resources.configuration).apply {
+                setLayoutDirection(java.util.Locale.forLanguageTag("ar"))
+            }
+            val rtlContext = isolated.createConfigurationContext(rtlConfig)
+            val rtlButton = WidgetRenderer.createLiveViews(rtlContext, settings, 1f, 398, 289,
+                false, surfacePlan, useFixedSurface = true).apply(rtlContext, FrameLayout(rtlContext))
+            rtlButton.left = 0; rtlButton.top = 0
+            rtlButton.right = SamsungWidgetSurface.VIEWPORT; rtlButton.bottom = SamsungWidgetSurface.VIEWPORT
+            drawableFrame.eraseColor(android.graphics.Color.TRANSPARENT)
+            rtlButton.draw(Canvas(drawableFrame))
+            drawableFrame.getPixels(drawablePixels, 0, drawableFrame.width,
+                0, 0, drawableFrame.width, drawableFrame.height)
+            check(drawablePixels.any { it ushr 24 != 0 }) { "RTL surface moved its bitmap outside the host clip" }
+            settings.tapToUnlockEnabled = true
+            val tapViews = intrinsicViews(false)
+            val tapButton = tapViews.apply(isolated, FrameLayout(isolated))
+            check(tapButton.isClickable && tapButton.hasOnClickListeners())
+            settings.tapToUnlockEnabled = false
+            check(tapViews.layoutId != intrinsicViews(false).layoutId)
+            check(SamsungWidgetSurface.create(isolated, settings, null, Int.MAX_VALUE, 289) == null)
+            drawableFrame.recycle()
+        }
         val root = views(cards, music).apply(isolated, FrameLayout(isolated))
         val content = root.findViewById<android.view.ViewGroup>(R.id.widget_content)
         check(content.getChildAt(0).id == R.id.widget_music_container) { "Music must appear above notifications" }
         check(root.findViewById<android.view.ViewGroup>(R.id.widget_notification_container).childCount == WidgetRows.MAX_VISIBLE_CARDS)
         check(root.findViewById<android.view.ViewGroup>(R.id.widget_music_container).childCount == 1)
-        check(root.findViewById<TextView>(R.id.music_artist).text.startsWith(isolated.getString(R.string.music_paused)))
+        check(root.findViewById<TextView>(R.id.music_artist).text.toString() == music.artist)
         check(root.findViewById<TextView>(R.id.widget_overflow_center).text.toString() == "+2")
         val rows = root.findViewById<android.view.ViewGroup>(R.id.widget_notification_container)
         fun checkRows(expected: List<NotificationCard>) {

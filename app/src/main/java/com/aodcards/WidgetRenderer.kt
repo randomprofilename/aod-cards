@@ -31,15 +31,23 @@ object WidgetRenderer {
 
     internal fun createLiveViews(context: Context, settings: SettingsRepository, scale: Float,
         width: Int, height: Int, screenInteractive: Boolean, plan: WidgetRenderModel,
-        useFixedSurface: Boolean): RemoteViews {
+        useFixedSurface: Boolean, useSamsungBoundsSurface: Boolean = true): RemoteViews {
         if (useFixedSurface) {
+            val hidden = screenInteractive && !settings.showWhenScreenOn
+            if (useSamsungBoundsSurface && SamsungWidgetSurface.available) {
+                val empty = hidden || plan.cards.isEmpty() && plan.music == null && plan.overflow == 0
+                val frame = if (empty) null else drawSurface(context,
+                    createViews(context, plan.cards, settings, plan.music, scale, width, height, plan = plan), width, height)
+                SamsungWidgetSurface.create(context, settings, frame, width, height, editorPreview = hidden)?.let { return it }
+            }
             // LockStar can stop laying out new children after folding. Mount the image
             // with the same intrinsic size in both states and let XML fill the host.
-            return RemoteViews(context.packageName, if (settings.tapToUnlockEnabled)
+            val surface = RemoteViews(context.packageName, if (settings.tapToUnlockEnabled)
                 R.layout.widget_cards_surface_tap_unlock else R.layout.widget_cards_surface).apply {
                 if (settings.tapToUnlockEnabled) {
                     setOnClickPendingIntent(R.id.widget_root, UnlockActivity.pendingIntent(context))
                 }
+                LockStarLauncher.bind(context, this)
                 val hidden = screenInteractive && !settings.showWhenScreenOn
                 if (hidden || (plan.cards.isEmpty() && plan.music == null && plan.overflow == 0)) {
                     setImageViewResource(R.id.widget_surface, R.drawable.widget_surface_blank)
@@ -48,6 +56,15 @@ object WidgetRenderer {
                     setImageViewBitmap(R.id.widget_surface, drawSurface(context, content, width, height))
                 }
             }
+            // Samsung's host explicitly remeasures its child in onLayout when a
+            // size variant changes. The fallback is selected before host bounds
+            // are known. This repairs the synthetic missing-measure case, but
+            // the real LockStar failure can recur when the selected size stays unchanged.
+            // Both variants carry identical pixels and visibility policy.
+            return RemoteViews(linkedMapOf(
+                android.util.SizeF(1f, 1f) to RemoteViews(surface),
+                android.util.SizeF(width.coerceAtLeast(2).toFloat(), height.coerceAtLeast(2).toFloat()) to surface
+            ))
         }
         return createViews(context, plan.cards, settings, plan.music, scale, width, height,
             screenInteractive, plan, enableUnlockTap = true).apply {
@@ -93,6 +110,7 @@ object WidgetRenderer {
         // The entire live widget, including gaps and hidden content, is a tap target.
         // In-app previews must never request an unlock.
         if (unlockOnTap) views.setOnClickPendingIntent(R.id.widget_root, UnlockActivity.pendingIntent(context))
+        if (enableUnlockTap) LockStarLauncher.bind(context, views)
         val hideContent = screenInteractive && !settings.showWhenScreenOn
         // The provider sets explicit root bounds for LockStar. Hidden content is
         // cleared as well as hidden; visibility alone would retain secrets in the host.
@@ -108,7 +126,7 @@ object WidgetRenderer {
             // Reuse positions without hashing notification keys. Each row fully binds its state.
             views.addStableView(R.id.widget_notification_container, row, index)
         }
-        WidgetRows.applyMusic(context, views, if (hideContent) null else plan.music, scale)
+        WidgetRows.applyMusic(context, views, if (hideContent) null else plan.music, scale, width)
         val overflow = if (hideContent) 0 else plan.overflow
         val showOverflow = overflow > 0
         views.setViewVisibility(R.id.widget_overflow_row, when {

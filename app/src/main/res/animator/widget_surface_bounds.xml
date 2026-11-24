@@ -1,0 +1,10 @@
+<set xmlns:android="http://schemas.android.com/apk/res/android" android:ordering="together">
+    <objectAnimator android:propertyName="left" android:valueFrom="0" android:valueTo="0"
+        android:valueType="intType" android:duration="1" />
+    <objectAnimator android:propertyName="top" android:valueFrom="0" android:valueTo="0"
+        android:valueType="intType" android:duration="1" />
+    <objectAnimator android:propertyName="right" android:valueFrom="0" android:valueTo="4096"
+        android:valueType="intType" android:duration="1" />
+    <objectAnimator android:propertyName="bottom" android:valueFrom="0" android:valueTo="4096"
+        android:valueType="intType" android:duration="1" />
+</set>

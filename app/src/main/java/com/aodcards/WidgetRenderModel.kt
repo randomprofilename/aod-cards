@@ -41,7 +41,7 @@ data class WidgetRenderModel(
                     else safe.also { imageBytes += bytes }
                 }
             }
-            val safeMusic = music?.takeIf { settings.musicPillEnabled && it.packageName !in settings.blockedPackages }?.let {
+            val safeMusic = music?.takeIf { !it.paused && settings.musicPillEnabled && it.packageName !in settings.blockedPackages }?.let {
                 if (settings.contentMode != 0) null else if (settings.compactMode) it.copy(artwork = null) else it
             }
             return safeCards to safeMusic

@@ -59,7 +59,7 @@ object WidgetLayout {
         }
         val musicHeight = if (music == null) 0 else cached(music.copy(artwork = null)) {
             val views = RemoteViews(context.packageName, R.layout.widget_music_pill)
-            WidgetRows.applyMusic(context, views, music, scale)
+            WidgetRows.applyMusic(context, views, music, scale, width)
             measure(views.apply(context, parent))
         }
         val available = px(height.toFloat()) - 2 * rootPadding - musicHeight

@@ -32,7 +32,7 @@ internal data class NotificationPrivacy(
         }
 
     fun music(track: MusicTrack?, settings: SettingsRepository): MusicTrack? = track?.takeIf {
-        settings.musicPillEnabled && settings.contentMode == 0 &&
+        !it.paused && settings.musicPillEnabled && settings.contentMode == 0 &&
             it.packageName !in settings.blockedPackages &&
             (!locked || showNotifications && showPrivateContent && it.lockscreenAllowed)
     }

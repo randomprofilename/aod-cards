@@ -28,7 +28,7 @@ object MusicSessionSnapshot {
             }
             controllers.filterNot { it.packageName in blockedPackages }.firstNotNullOfOrNull { controller ->
                 val state = controller.playbackState?.state
-                if (state !in listOf(PlaybackState.STATE_PLAYING, PlaybackState.STATE_PAUSED,
+                if (state !in listOf(PlaybackState.STATE_PLAYING,
                         PlaybackState.STATE_BUFFERING, PlaybackState.STATE_CONNECTING)) return@firstNotNullOfOrNull null
                 val metadata = controller.metadata ?: return@firstNotNullOfOrNull null
                 val title = metadata.getString(MediaMetadata.METADATA_KEY_TITLE)?.trim().orEmpty()
@@ -40,7 +40,7 @@ object MusicSessionSnapshot {
                 val art = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART)
                     ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
                     ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
-                MusicTrack(controller.packageName, title, artist, art?.let { smallArtwork(it, cacheAllowed) }, state == PlaybackState.STATE_PAUSED)
+                MusicTrack(controller.packageName, title, artist, art?.let { smallArtwork(it, cacheAllowed) }, paused = false)
             }
         } catch (_: SecurityException) {
             null
